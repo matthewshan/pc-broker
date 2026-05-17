@@ -176,9 +176,9 @@ offline → waking → host_up → ollama_starting → ready
 
 ## Kubernetes Deployment
 
-Manifests for the k3s homelab live in the [k3s-homelab](https://github.com/matthewshan/k3s-homelab) repo under `applications/llm-pc-broker/`.
+Manifests live in the [k3s-homelab](https://github.com/matthewshan/k3s-homelab) repo under `applications/llm-pc-broker/`.
 
-The broker is deployed via ArgoCD with the `applications` ApplicationSet. See [`docs/k3s-homelab/`](docs/k3s-homelab/) for the manifest source.
+The broker is deployed via ArgoCD with the `applications` ApplicationSet.
 
 Required secrets (managed out-of-band, e.g. via `kubectl create secret`):
 
