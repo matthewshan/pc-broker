@@ -1,0 +1,49 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-pc-broker
+  namespace: llm-pc-broker
+  labels:
+    app: llm-pc-broker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llm-pc-broker
+  template:
+    metadata:
+      labels:
+        app: llm-pc-broker
+    spec:
+      hostNetwork: false
+      containers:
+        - name: broker
+          image: ghcr.io/matthewshan/llm-pc-broker:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: llm-pc-broker-config
+            - secretRef:
+                name: llm-pc-broker-secrets
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
