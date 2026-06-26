@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PC Broker</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🖥️ PC Broker</h1>
+    <span class="version">v{{ version }}</span>
+  </header>
+
+  <main>
+    <!-- ── Status Dashboard ─────────────────────────────────────── -->
+    <section class="card" id="status-card">
+      <h2>Status</h2>
+      <div class="state-badge state-{{ state }}">{{ state | upper }}</div>
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="label">PC ({{ pc.host }})</span>
+          <span class="dot {% if pc.reachable %}dot-green{% else %}dot-red{% endif %}"></span>
+          <span>{% if pc.reachable %}Reachable{% else %}Offline{% endif %}</span>
+          {% if pc.last_seen %}<small>Last seen: {{ pc.last_seen }}</small>{% endif %}
+        </div>
+        {% if last_wake_request %}
+        <div class="status-item">
+          <span class="label">Last wake request</span>
+          <span>{{ last_wake_request }}</span>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+
+    <!-- ── Power Controls ──────────────────────────────────────── -->
+    <section class="card" id="power-card">
+      <h2>Power</h2>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="powerAction('on')">⚡ Wake PC</button>
+        <button class="btn btn-red" onclick="powerAction('off')">🔴 Shut Down PC</button>
+        <button class="btn btn-blue" onclick="refreshStatus()">🔄 Refresh</button>
+      </div>
+      <p id="power-msg" class="msg"></p>
+    </section>
+
+    <!-- ── Diagnostics ─────────────────────────────────────────── -->
+    <section class="card" id="diag-card">
+      <h2>Diagnostics</h2>
+      <table class="diag-table">
+        <tr><th>PC Host</th><td>{{ pc.host }}</td></tr>
+        <tr><th>Broker Version</th><td>{{ version }}</td></tr>
+        <tr><th>Host Reachability Timeout</th><td>{{ host_reachability_timeout }}s</td></tr>
+        <tr><th>Poll Interval</th><td>{{ poll_interval }}s</td></tr>
+      </table>
+    </section>
+
+    <!-- ── Recent Events ──────────────────────────────────────── -->
+    <section class="card" id="events-card">
+      <h2>Recent Events</h2>
+      {% if events %}
+      <ul class="event-list">
+        {% for ev in events %}
+        <li>
+          <span class="event-time">{{ ev.timestamp }}</span>
+          <span class="event-kind event-kind-{{ ev.kind }}">{{ ev.kind }}</span>
+          <span class="event-msg">{{ ev.message }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">No events yet.</p>
+      {% endif %}
+    </section>
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

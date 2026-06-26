@@ -1,0 +1,238 @@
+/* ── Reset & Base ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --border: #2a2d3e;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --green: #22c55e;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --yellow: #f59e0b;
+  --radius: 8px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+header h1 { font-size: 1.4rem; }
+.version { color: var(--muted); font-size: 0.85rem; }
+
+main {
+  max-width: 900px;
+  margin: 24px auto;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  box-shadow: var(--shadow);
+}
+
+.card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 16px;
+}
+
+/* ── State Badge ─────────────────────────────────────────────────────── */
+.state-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  margin-bottom: 16px;
+  background: var(--border);
+  color: var(--muted);
+}
+
+.state-ready    { background: rgba(34,197,94,0.15); color: var(--green); }
+.state-waking   { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.state-host_up  { background: rgba(59,130,246,0.15); color: var(--blue); }
+.state-ollama_starting { background: rgba(59,130,246,0.15); color: var(--blue); }
+.state-timeout  { background: rgba(239,68,68,0.15); color: var(--red); }
+.state-error    { background: rgba(239,68,68,0.15); color: var(--red); }
+.state-offline  { background: var(--border); color: var(--muted); }
+
+/* ── Status Grid ──────────────────────────────────────────────────────── */
+.status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.label { color: var(--muted); min-width: 180px; }
+small  { color: var(--muted); font-size: 0.8rem; }
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dot-red   { background: var(--red); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
+.btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-green { background: var(--green); color: #000; }
+.btn-red   { background: var(--red);   color: #fff; }
+.btn-blue  { background: var(--blue);  color: #fff; }
+
+.msg { margin-top: 10px; font-size: 0.9rem; color: var(--muted); min-height: 1.4em; }
+
+/* ── Chat ─────────────────────────────────────────────────────────────── */
+.chat-controls { margin-bottom: 12px; }
+
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  min-width: 240px;
+}
+
+.chat-messages {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-bubble {
+  max-width: 80%;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-bubble.user {
+  align-self: flex-end;
+  background: var(--blue);
+  color: #fff;
+}
+
+.chat-bubble.assistant {
+  align-self: flex-start;
+  background: var(--border);
+  color: var(--text);
+}
+
+.chat-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+/* ── Diagnostics ──────────────────────────────────────────────────────── */
+.diag-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.diag-table th, .diag-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.diag-table th { color: var(--muted); font-weight: 500; width: 220px; }
+
+/* ── Events ───────────────────────────────────────────────────────────── */
+.event-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+
+.event-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.event-time { color: var(--muted); flex-shrink: 0; }
+
+.event-kind {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--muted);
+}
+
+.event-kind-wake_request     { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.event-kind-state_change     { background: rgba(59,130,246,0.15); color: var(--blue); }
+.event-kind-host_up          { background: rgba(34,197,94,0.15); color: var(--green); }
+.event-kind-ollama_starting  { background: rgba(34,197,94,0.15); color: var(--green); }
+.event-kind-timeout          { background: rgba(239,68,68,0.15); color: var(--red); }
+.event-kind-shutdown_request { background: rgba(239,68,68,0.15); color: var(--red); }
+.event-kind-proxy_request    { background: rgba(99,102,241,0.15); color: #818cf8; }
+
+.muted { color: var(--muted); font-size: 0.9rem; }
