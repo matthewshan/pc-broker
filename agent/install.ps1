@@ -20,14 +20,23 @@
     LAN subnet allowed to reach the agent through the firewall (default
     192.168.1.0/24).
 
+.PARAMETER DryRun
+    If set, the agent logs shutdown/restart requests but does NOT power the
+    machine off. Use this for the first end-to-end test, then re-run install
+    without -DryRun to arm it for real.
+
 .EXAMPLE
     ./install.ps1 -Token 's3cr3t' -Subnet 192.168.1.0/24
+
+.EXAMPLE
+    ./install.ps1 -Token 's3cr3t' -DryRun
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)] [string] $Token,
     [int]    $Port   = 8001,
-    [string] $Subnet = "192.168.1.0/24"
+    [string] $Subnet = "192.168.1.0/24",
+    [switch] $DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,10 +53,13 @@ Write-Host "Python:     $python"
 Write-Host "Agent:      $AgentPath"
 Write-Host "Port:       $Port"
 Write-Host "Subnet:     $Subnet"
+Write-Host "Dry run:    $($DryRun.IsPresent)"
 
 # Persist config as machine-level env vars (visible to the SYSTEM account).
 [Environment]::SetEnvironmentVariable("SHUTDOWN_AGENT_TOKEN", $Token, "Machine")
 [Environment]::SetEnvironmentVariable("AGENT_PORT", "$Port", "Machine")
+# Set (or clear) dry-run so re-running install without -DryRun arms it for real.
+[Environment]::SetEnvironmentVariable("AGENT_DRY_RUN", $(if ($DryRun) { "1" } else { $null }), "Machine")
 
 # (Re)register the scheduled task.
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
@@ -74,7 +86,13 @@ New-NetFirewallRule -DisplayName $TaskName -Direction Inbound -Action Allow `
 Start-ScheduledTask -TaskName $TaskName
 
 Write-Host ""
-Write-Host "Installed. Test with:" -ForegroundColor Green
+if ($DryRun) {
+    Write-Host "Installed in DRY RUN mode: shutdown requests are logged, NOT executed." -ForegroundColor Yellow
+    Write-Host "Re-run without -DryRun to arm real shutdowns." -ForegroundColor Yellow
+} else {
+    Write-Host "Installed (ARMED): authorized shutdown requests WILL power off the PC." -ForegroundColor Green
+}
+Write-Host "Test with:" -ForegroundColor Green
 Write-Host "  curl http://localhost:$Port/health"
 Write-Host "Uninstall with:"
 Write-Host "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false"

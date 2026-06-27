@@ -14,6 +14,10 @@ Configuration (environment variables):
                            agent refuses to start.
     AGENT_PORT             TCP port to listen on (default: 8001).
     AGENT_BIND             Address to bind (default: 0.0.0.0).
+    AGENT_DRY_RUN          If truthy (1/true/yes/on), authorized shutdown and
+                           restart requests are logged but the machine is NOT
+                           powered off. Use this to verify the full
+                           phone -> broker -> agent path safely.
 
 Endpoints:
     GET  /health     -> 200 {"status": "ok"}        (no auth)
@@ -39,12 +43,20 @@ logger = logging.getLogger(__name__)
 TOKEN = os.environ.get("SHUTDOWN_AGENT_TOKEN", "")
 PORT = int(os.environ.get("AGENT_PORT", "8001"))
 BIND = os.environ.get("AGENT_BIND", "0.0.0.0")
+DRY_RUN = os.environ.get("AGENT_DRY_RUN", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _run_shutdown(restart: bool = False) -> None:
-    """Invoke the Windows shutdown command. Fire-and-forget."""
+    """Invoke the Windows shutdown command. Fire-and-forget.
+
+    In dry-run mode the command is logged but never executed, so the machine
+    stays on. Used to validate the end-to-end path before arming the agent.
+    """
     flag = "/r" if restart else "/s"
     cmd = ["shutdown", flag, "/t", "0"]
+    if DRY_RUN:
+        logger.warning("DRY RUN: would execute: %s (machine NOT affected)", " ".join(cmd))
+        return
     logger.info("Executing: %s", " ".join(cmd))
     # On non-Windows hosts (e.g. local dev) this will fail harmlessly.
     subprocess.Popen(cmd)
@@ -86,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
 
         restart = self.path == "/restart"
         action = "restart" if restart else "shutdown"
-        self._send(202, {"accepted": True, "action": action})
+        self._send(202, {"accepted": True, "action": action, "dry_run": DRY_RUN})
         # Respond first, then trigger the action so the broker gets a clean 202.
         try:
             _run_shutdown(restart=restart)
@@ -99,7 +111,9 @@ def main() -> None:
         logger.error("SHUTDOWN_AGENT_TOKEN is not set; refusing to start.")
         sys.exit(1)
     server = ThreadingHTTPServer((BIND, PORT), Handler)
-    logger.info("Listening on %s:%d", BIND, PORT)
+    if DRY_RUN:
+        logger.warning("DRY RUN enabled: shutdown/restart requests will be logged, not executed.")
+    logger.info("Listening on %s:%d (no action taken on startup)", BIND, PORT)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

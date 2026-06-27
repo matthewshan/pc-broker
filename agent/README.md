@@ -18,6 +18,26 @@ Uses only the Python standard library — no `pip install` required on the PC.
 Auth is `Authorization: Bearer <SHUTDOWN_AGENT_TOKEN>`. The token must match the
 `SHUTDOWN_AGENT_TOKEN` key in the broker's `pc-broker-secrets` k8s secret.
 
+The agent **never** shuts the PC down on startup — the only path to a real
+`shutdown` is an authenticated `POST /shutdown` or `/restart`.
+
+## Dry run (test safely first)
+
+Install with `-DryRun` so authorized shutdown/restart requests are **logged but
+not executed** — the machine stays on. Use this to confirm the whole
+phone → broker → agent path works, then re-install without `-DryRun` to arm it.
+
+```powershell
+cd agent
+./install.ps1 -Token '<token>' -DryRun        # safe: logs, never powers off
+# ...verify end-to-end, then arm it:
+./install.ps1 -Token '<token>'                # real shutdowns
+```
+
+In dry-run the `/shutdown` response includes `"dry_run": true` and the agent log
+shows `DRY RUN: would execute: shutdown /s /t 0 (machine NOT affected)`.
+(Equivalent env var: `AGENT_DRY_RUN=1`.)
+
 ## Install (run as Administrator)
 
 ```powershell
@@ -29,7 +49,7 @@ This registers a scheduled task that starts the agent at boot as `SYSTEM` (so it
 answers even before anyone logs in), stores the token as a machine env var, and
 opens an inbound firewall rule for the port (default 8001) scoped to the LAN.
 
-Verify:
+Verify (returns `{"status":"ok"}` and the PC stays on):
 
 ```powershell
 curl http://localhost:8001/health
