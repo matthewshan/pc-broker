@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM PC Broker — Docs</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222535;
+      --border: #2a2d3e;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --green: #22c55e;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --indigo: #6366f1;
+      --yellow: #f59e0b;
+      --orange: #f97316;
+      --radius: 8px;
+      --sidebar-width: 260px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ───────────────────────────────────────────────────── */
+    nav {
+      width: var(--sidebar-width);
+      min-width: var(--sidebar-width);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 24px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .nav-logo {
+      padding: 0 20px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .nav-logo h1 { font-size: 1rem; font-weight: 700; }
+    .nav-logo span { color: var(--muted); font-size: 0.8rem; }
+
+    nav ul { list-style: none; }
+    nav ul li a {
+      display: block;
+      padding: 6px 20px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.88rem;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    nav ul li a:hover, nav ul li a.active {
+      color: var(--text);
+      border-left-color: var(--blue);
+      background: rgba(59,130,246,0.05);
+    }
+
+    .nav-section {
+      padding: 12px 20px 4px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    /* ── Main content ──────────────────────────────────────────────── */
+    main {
+      flex: 1;
+      padding: 40px 48px;
+      max-width: 860px;
+    }
+
+    section { margin-bottom: 60px; scroll-margin-top: 24px; }
+
+    h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 { font-size: 1.1rem; font-weight: 600; margin: 24px 0 10px; color: var(--text); }
+    h4 { font-size: 0.95rem; font-weight: 600; margin: 16px 0 6px; color: var(--muted); }
+
+    p { margin-bottom: 12px; color: #cbd5e1; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Code ──────────────────────────────────────────────────────── */
+    code {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.85em;
+      color: #a5f3fc;
+    }
+
+    pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      overflow-x: auto;
+      margin: 12px 0 20px;
+    }
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: 0.88rem;
+      color: #e2e8f0;
+    }
+
+    /* ── Tables ────────────────────────────────────────────────────── */
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 0.9rem; }
+    th { background: var(--surface2); padding: 8px 12px; text-align: left; font-weight: 600; color: var(--muted); border: 1px solid var(--border); }
+    td { padding: 8px 12px; border: 1px solid var(--border); }
+    tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+    /* ── State badges ──────────────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .badge-green  { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge-red    { background: rgba(239,68,68,0.15); color: var(--red); }
+    .badge-blue   { background: rgba(59,130,246,0.15); color: var(--blue); }
+    .badge-yellow { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .badge-gray   { background: var(--border); color: var(--muted); }
+    .badge-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+
+    /* ── Method pills ──────────────────────────────────────────────── */
+    .method {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      font-family: monospace;
+      margin-right: 8px;
+    }
+    .get    { background: rgba(34,197,94,0.2);  color: var(--green); }
+    .post   { background: rgba(59,130,246,0.2); color: var(--blue); }
+
+    /* ── Endpoint card ─────────────────────────────────────────────── */
+    .endpoint {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin: 14px 0;
+    }
+    .endpoint-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .endpoint-path {
+      font-family: monospace;
+      font-size: 0.95rem;
+      font-weight: 600;
+      flex: 1;
+    }
+    .endpoint-summary { color: var(--muted); font-size: 0.85rem; }
+    .chevron { color: var(--muted); transition: transform 0.2s; font-size: 0.75rem; }
+    .chevron.open { transform: rotate(90deg); }
+    .endpoint-body { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .endpoint-body.open { display: block; }
+
+    /* ── State machine diagram ─────────────────────────────────────── */
+    .state-flow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+    .state-node {
+      padding: 6px 14px;
+      border-radius: var(--radius);
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: monospace;
+    }
+    .arrow { color: var(--muted); font-size: 1.2rem; }
+
+    /* ── Try it ────────────────────────────────────────────────────── */
+    .try-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-top: 14px;
+    }
+    .try-panel h4 { margin: 0 0 10px; color: var(--blue); font-size: 0.85rem; }
+    .try-row { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; }
+    .try-row label { color: var(--muted); font-size: 0.82rem; min-width: 100px; padding-top: 6px; }
+    .try-row input, .try-row textarea, .try-row select {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 5px 10px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      min-width: 0;
+    }
+    .try-row textarea { resize: vertical; min-height: 60px; font-family: monospace; }
+    .btn-try {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 16px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-try:hover { opacity: 0.85; }
+    .try-result {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-family: monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 40px;
+      max-height: 300px;
+      overflow-y: auto;
+      color: #a5f3fc;
+      margin-top: 8px;
+      display: none;
+    }
+    .try-status {
+      font-size: 0.78rem;
+      margin-top: 4px;
+    }
+
+    /* ── Alert ─────────────────────────────────────────────────────── */
+    .alert {
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 0.9rem;
+      border-left: 3px solid;
+    }
+    .alert-blue { background: rgba(59,130,246,0.08); border-color: var(--blue); color: #93c5fd; }
+    .alert-yellow { background: rgba(245,158,11,0.08); border-color: var(--yellow); color: #fde68a; }
+
+    @media (max-width: 720px) {
+      nav { display: none; }
+      main { padding: 24px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-logo">
+    <h1>🖥️ LLM PC Broker</h1>
+    <span>API Documentation</span>
+  </div>
+  <ul>
+    <li class="nav-section">Overview</li>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#states">Operational States</a></li>
+    <li><a href="#quickstart">Quick Start</a></li>
+
+    <li class="nav-section">API Reference</li>
+    <li><a href="#status">Status</a></li>
+    <li><a href="#power">Power</a></li>
+    <li><a href="#llm">LLM</a></li>
+    <li><a href="#events">Events</a></li>
+    <li><a href="#health">Health Probes</a></li>
+
+    <li class="nav-section">Configuration</li>
+    <li><a href="#config">Environment Variables</a></li>
+
+    <li class="nav-section">Deployment</li>
+    <li><a href="#kubernetes">Kubernetes</a></li>
+    <li><a href="#security">Security</a></li>
+  </ul>
+</nav>
+
+<!-- ── Main ─────────────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Introduction -->
+  <section id="introduction">
+    <h2>Introduction</h2>
+    <p>
+      <strong>LLM PC Broker</strong> is an internal service that sits between your homelab Kubernetes cluster
+      and a gaming PC running <a href="https://ollama.com/" target="_blank">Ollama</a>. It handles power
+      management (Wake-on-LAN), readiness polling, and request proxying — so internal applications always
+      have a stable API endpoint regardless of whether the gaming PC is on or off.
+    </p>
+    <p>
+      A lightweight built-in UI provides a status dashboard, power controls, and a chat interface.
+    </p>
+    <div class="alert alert-blue">
+      💡 This service is <strong>internal-only</strong>. It should never be exposed to the public internet.
+      Access is via an internal gateway or Twingate.
+    </div>
+
+    <h3>Base URL</h3>
+    <div class="try-panel">
+      <h4>Configure the base URL for "Try it" panels below</h4>
+      <div class="try-row">
+        <label>Base URL</label>
+        <input id="global-base-url" type="text" value="http://localhost:8000" placeholder="http://llm-broker.internal" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section id="architecture">
+    <h2>Architecture</h2>
+    <pre><code>Browser / Internal App
+        │
+        ▼
+  llm-pc-broker  (Kubernetes pod)
+  ├─ Background poll loop  ─────────────────────────────────────┐
+  ├─ State machine (offline → waking → host_up → ready)        │
+  ├─ Event ring buffer (last 200 events)                        │
+  │                                                              │
+  ├─ GET  /api/status       ← combined PC + Ollama state        │
+  ├─ POST /api/power/on     ← sends WoL UDP magic packet        │
+  ├─ POST /api/power/off    ← calls shutdown agent on PC        │
+  ├─ GET  /api/llm/models   ← proxies /api/tags from Ollama     │
+  ├─ POST /api/llm/chat     ← wake-and-wait, then proxy         │
+  ├─ GET  /api/events       ← recent operational events         │
+  └─ GET  /                 ← built-in chat + status UI         │
+        │                                                        │
+        ▼  (LAN)           polling every 5s ◄───────────────────┘
+  Gaming PC
+  └─ Ollama :11434</code></pre>
+
+    <h3>Wake-and-Wait Flow</h3>
+    <p>When an LLM request arrives and Ollama is not ready:</p>
+    <pre><code>LLM request arrives
+  └─ Ollama reachable? ──yes──► proxy immediately
+       └─ no
+           └─ PC reachable? ──no──► send Wake-on-LAN (UDP broadcast)
+               └─ poll PC reachability  (timeout: HOST_REACHABILITY_TIMEOUT)
+                   └─ poll Ollama readiness (timeout: OLLAMA_READINESS_TIMEOUT)
+                       ├─ ready ──► proxy request
+                       └─ timeout ──► 503 + {"error": "warming_up"}</code></pre>
+  </section>
+
+  <!-- States -->
+  <section id="states">
+    <h2>Operational States</h2>
+    <p>The broker uses a unified state machine. The same state value appears in API responses, the UI dashboard, and logs.</p>
+
+    <div class="state-flow">
+      <span class="state-node badge badge-gray">offline</span>
+      <span class="arrow">→</span>
+      <span class="state-node badge badge-yellow">waking</span>
+      <span class="arrow">→</span>
+      <span class="state-node badge badge-blue">host_up</span>
+      <span class="arrow">→</span>
+      <span class="state-node badge badge-blue">ollama_starting</span>
+      <span class="arrow">→</span>
+      <span class="state-node badge badge-green">ready</span>
+    </div>
+    <div class="state-flow" style="margin-top:4px">
+      <span style="color:var(--muted);font-size:.85rem">any state</span>
+      <span class="arrow">→</span>
+      <span class="state-node badge badge-red">timeout</span>
+      <span style="padding: 0 4px;color:var(--muted)">/</span>
+      <span class="state-node badge badge-red">error</span>
+    </div>
+
+    <table>
+      <thead><tr><th>State</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>offline</code></td><td>PC and Ollama are not reachable</td></tr>
+        <tr><td><code>waking</code></td><td>WoL packet sent; waiting for PC to respond</td></tr>
+        <tr><td><code>host_up</code></td><td>PC is pingable; Ollama not yet ready</td></tr>
+        <tr><td><code>ollama_starting</code></td><td>Ollama port open; models may still be loading</td></tr>
+        <tr><td><code>ready</code></td><td>Ollama is healthy and models are available</td></tr>
+        <tr><td><code>timeout</code></td><td>Wake or readiness attempt exceeded timeout</td></tr>
+        <tr><td><code>error</code></td><td>Unexpected error during polling</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart">
+    <h2>Quick Start</h2>
+    <h3>Run locally</h3>
+    <pre><code>pip install -r requirements.txt
+
+PC_MAC=aa:bb:cc:dd:ee:ff \
+PC_HOST=192.168.1.100 \
+OLLAMA_BASE_URL=http://192.168.1.100:11434 \
+uvicorn app.main:app --reload</code></pre>
+
+    <h3>Run with Docker</h3>
+    <pre><code>docker run -p 8000:8000 \
+  -e PC_MAC=aa:bb:cc:dd:ee:ff \
+  -e PC_HOST=192.168.1.100 \
+  -e OLLAMA_BASE_URL=http://192.168.1.100:11434 \
+  ghcr.io/matthewshan/llm-pc-broker:latest</code></pre>
+
+    <h3>Run tests</h3>
+    <pre><code>pip install -r requirements-dev.txt
+pytest tests/ -v</code></pre>
+  </section>
+
+  <!-- Status API -->
+  <section id="status">
+    <h2>Status API</h2>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/api/status</span>
+        <span class="endpoint-summary">Combined PC + Ollama status</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Returns the current state of the broker, PC reachability, and Ollama readiness.</p>
+        <h4>Response</h4>
+        <pre><code>{
+  "state": "ready",
+  "pc": {
+    "reachable": true,
+    "last_seen": "2026-05-17T12:00:00Z"
+  },
+  "ollama": {
+    "reachable": true,
+    "models": ["llama3", "deepseek-r1"]
+  }
+}</code></pre>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <button class="btn-try" onclick="tryGet('/api/status', 'r-status')">Send Request</button>
+          <div class="try-result" id="r-status"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Power API -->
+  <section id="power">
+    <h2>Power API</h2>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/power/on</span>
+        <span class="endpoint-summary">Send Wake-on-LAN packet</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Sends a UDP broadcast WoL magic packet to the gaming PC. Idempotent — safe to call even if the PC is already on.</p>
+        <p>Returns <code>202 Accepted</code> on success, <code>503</code> if <code>PC_MAC</code> is not configured.</p>
+        <h4>Response (202)</h4>
+        <pre><code>{ "accepted": true, "message": "Wake-on-LAN packet sent" }</code></pre>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <button class="btn-try" onclick="tryPost('/api/power/on', null, 'r-power-on')">Send Request</button>
+          <div class="try-result" id="r-power-on"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/power/off</span>
+        <span class="endpoint-summary">Request graceful shutdown</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Calls the optional shutdown agent running on the gaming PC. Returns <code>202</code> on success, <code>503</code> if the agent is not configured or unreachable.</p>
+        <div class="alert alert-yellow">⚠️ Requires <code>SHUTDOWN_AGENT_URL</code> to be configured.</div>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <button class="btn-try" onclick="tryPost('/api/power/off', null, 'r-power-off')">Send Request</button>
+          <div class="try-result" id="r-power-off"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LLM API -->
+  <section id="llm">
+    <h2>LLM API</h2>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/api/llm/health</span>
+        <span class="endpoint-summary">Ollama readiness check</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Returns <code>{"status": "ok"}</code> when Ollama is reachable, <code>503</code> otherwise.</p>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <button class="btn-try" onclick="tryGet('/api/llm/health', 'r-llm-health')">Send Request</button>
+          <div class="try-result" id="r-llm-health"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/api/llm/models</span>
+        <span class="endpoint-summary">List available Ollama models</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Proxies <code>GET /api/tags</code> from Ollama and returns model names.</p>
+        <h4>Response</h4>
+        <pre><code>{ "models": ["llama3", "deepseek-r1"] }</code></pre>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <button class="btn-try" onclick="tryGet('/api/llm/models', 'r-llm-models')">Send Request</button>
+          <div class="try-result" id="r-llm-models"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/llm/chat</span>
+        <span class="endpoint-summary">Chat proxy with wake-and-wait</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Accepts an Ollama-format chat request. If the PC is offline, automatically wakes it and waits before proxying. Returns <code>503</code> with <code>{"error":"warming_up"}</code> if readiness times out.</p>
+        <h4>Request body</h4>
+        <pre><code>{
+  "model": "llama3",
+  "messages": [
+    { "role": "user", "content": "Hello!" }
+  ],
+  "stream": false
+}</code></pre>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <div class="try-row">
+            <label>Model</label>
+            <input id="chat-model" type="text" value="llama3" />
+          </div>
+          <div class="try-row">
+            <label>Message</label>
+            <textarea id="chat-message">Hello! What can you do?</textarea>
+          </div>
+          <button class="btn-try" onclick="tryChatRequest()">Send Request</button>
+          <div class="try-result" id="r-chat"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/llm/generate</span>
+        <span class="endpoint-summary">Raw generate proxy</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Proxies a raw generate request to Ollama. Same wake-and-wait behavior as <code>/api/llm/chat</code>.</p>
+        <h4>Request body</h4>
+        <pre><code>{ "model": "llama3", "prompt": "Why is the sky blue?", "stream": false }</code></pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/api/llm/embeddings</span>
+        <span class="endpoint-summary">Embeddings proxy</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Proxies an embeddings request to Ollama.</p>
+        <h4>Request body</h4>
+        <pre><code>{ "model": "llama3", "prompt": "The sky is blue." }</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- Events API -->
+  <section id="events">
+    <h2>Events API</h2>
+
+    <div class="endpoint">
+      <div class="endpoint-header" onclick="toggleEndpoint(this)">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/api/events</span>
+        <span class="endpoint-summary">Recent operational events</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="endpoint-body">
+        <p>Returns the most recent events from the in-memory ring buffer (max 200 entries, newest first).</p>
+        <h4>Query parameters</h4>
+        <table>
+          <thead><tr><th>Param</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>limit</code></td><td>50</td><td>Number of events to return (1–200)</td></tr>
+          </tbody>
+        </table>
+        <h4>Response</h4>
+        <pre><code>[
+  {
+    "timestamp": "2026-05-17T12:01:00Z",
+    "kind": "wake_request",
+    "message": "Wake-on-LAN request initiated"
+  },
+  {
+    "timestamp": "2026-05-17T12:03:45Z",
+    "kind": "state_change",
+    "message": "State changed from waking to ready"
+  }
+]</code></pre>
+        <div class="try-panel">
+          <h4>Try it</h4>
+          <div class="try-row">
+            <label>Limit</label>
+            <input id="events-limit" type="number" value="10" min="1" max="200" style="max-width:80px" />
+          </div>
+          <button class="btn-try" onclick="tryEventsRequest()">Send Request</button>
+          <div class="try-result" id="r-events"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Health -->
+  <section id="health">
+    <h2>Health Probes</h2>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Method</th><th>Purpose</th><th>Returns</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>/healthz</code></td><td><span class="method get">GET</span></td>
+          <td>Kubernetes liveness probe</td>
+          <td>Always <code>200</code> while process is alive</td>
+        </tr>
+        <tr>
+          <td><code>/readyz</code></td><td><span class="method get">GET</span></td>
+          <td>Kubernetes readiness probe</td>
+          <td><code>200</code> when Ollama reachable, <code>503</code> otherwise</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="try-panel">
+      <h4>Try it — /healthz</h4>
+      <button class="btn-try" onclick="tryGet('/healthz', 'r-healthz')">Send Request</button>
+      <div class="try-result" id="r-healthz"></div>
+    </div>
+  </section>
+
+  <!-- Config -->
+  <section id="config">
+    <h2>Environment Variables</h2>
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>PC_MAC</code></td><td><em>(required)</em></td><td>MAC address of gaming PC — needed for WoL</td></tr>
+        <tr><td><code>PC_HOST</code></td><td><code>192.168.1.100</code></td><td>IP or hostname of gaming PC</td></tr>
+        <tr><td><code>PC_BROADCAST</code></td><td><code>192.168.1.255</code></td><td>UDP broadcast address for WoL</td></tr>
+        <tr><td><code>OLLAMA_BASE_URL</code></td><td><code>http://192.168.1.100:11434</code></td><td>Ollama API base URL</td></tr>
+        <tr><td><code>HOST_REACHABILITY_TIMEOUT</code></td><td><code>300</code></td><td>Seconds to wait for PC (ping)</td></tr>
+        <tr><td><code>OLLAMA_READINESS_TIMEOUT</code></td><td><code>600</code></td><td>Seconds to wait for Ollama</td></tr>
+        <tr><td><code>POLL_INTERVAL</code></td><td><code>5</code></td><td>Seconds between health-check polls</td></tr>
+        <tr><td><code>API_TOKEN</code></td><td><em>(optional)</em></td><td>Shared secret for programmatic access</td></tr>
+        <tr><td><code>SHUTDOWN_AGENT_URL</code></td><td><em>(optional)</em></td><td>URL of shutdown agent on gaming PC</td></tr>
+        <tr><td><code>SHUTDOWN_AGENT_TOKEN</code></td><td><em>(optional)</em></td><td>Auth token for shutdown agent</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Kubernetes -->
+  <section id="kubernetes">
+    <h2>Kubernetes Deployment</h2>
+    <p>
+      Manifests live in the <a href="https://github.com/matthewshan/k3s-homelab" target="_blank">k3s-homelab</a> repo
+      under <code>applications/llm-pc-broker/</code>. They are picked up automatically by the ArgoCD
+      <code>applications</code> ApplicationSet.
+    </p>
+    <h3>Required Secret</h3>
+    <p>Create the secret out-of-band (not stored in Git):</p>
+    <pre><code>kubectl create secret generic llm-pc-broker-secrets \
+  --namespace llm-pc-broker \
+  --from-literal=PC_MAC='aa:bb:cc:dd:ee:ff' \
+  --from-literal=API_TOKEN='changeme' \
+  --from-literal=SHUTDOWN_AGENT_TOKEN=''</code></pre>
+
+    <h3>Container Images</h3>
+    <p>Multi-arch images published on every GitHub release tag:</p>
+    <pre><code>ghcr.io/matthewshan/llm-pc-broker:latest
+ghcr.io/matthewshan/llm-pc-broker:v1.0.0</code></pre>
+  </section>
+
+  <!-- Security -->
+  <section id="security">
+    <h2>Security</h2>
+    <div class="alert alert-yellow">
+      ⚠️ This service must <strong>never</strong> be exposed to the public internet. Use an internal gateway or Twingate only.
+    </div>
+    <table>
+      <thead><tr><th>Concern</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td>External exposure</td><td>Internal gateway + Twingate only</td></tr>
+        <tr><td>Programmatic API access</td><td>Set <code>API_TOKEN</code> env var</td></tr>
+        <tr><td>Shutdown endpoint</td><td>Most sensitive — consider additional gateway-level auth</td></tr>
+        <tr><td>Secrets in Git</td><td>Kubernetes Secrets managed out-of-band, not in ConfigMaps</td></tr>
+        <tr><td>Ollama direct exposure</td><td>Only broker needs LAN access to Ollama port</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<script>
+'use strict';
+
+// ── Sidebar active link on scroll ─────────────────────────────────────────
+const sections = document.querySelectorAll('section[id]');
+const navLinks  = document.querySelectorAll('nav a[href^="#"]');
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      navLinks.forEach(l => l.classList.remove('active'));
+      const link = document.querySelector(`nav a[href="#${e.target.id}"]`);
+      if (link) link.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -70% 0px' });
+
+sections.forEach(s => observer.observe(s));
+
+// ── Accordion ─────────────────────────────────────────────────────────────
+function toggleEndpoint(header) {
+  const body    = header.nextElementSibling;
+  const chevron = header.querySelector('.chevron');
+  const isOpen  = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+}
+
+// ── "Try it" helpers ──────────────────────────────────────────────────────
+function getBase() {
+  return (document.getElementById('global-base-url').value || 'http://localhost:8000').replace(/\/$/, '');
+}
+
+function showResult(elId, status, body) {
+  const el = document.getElementById(elId);
+  el.style.display = 'block';
+  const color = status >= 200 && status < 300 ? '#86efac' : '#fca5a5';
+  el.style.color = color;
+  el.textContent = `HTTP ${status}\n\n${typeof body === 'string' ? body : JSON.stringify(body, null, 2)}`;
+}
+
+async function tryGet(path, resultId) {
+  try {
+    const r = await fetch(getBase() + path);
+    const body = await r.json().catch(() => r.text());
+    showResult(resultId, r.status, body);
+  } catch (e) {
+    showResult(resultId, 0, `Network error: ${e.message}`);
+  }
+}
+
+async function tryPost(path, payload, resultId) {
+  try {
+    const opts = { method: 'POST', headers: {} };
+    if (payload !== null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(payload);
+    }
+    const r = await fetch(getBase() + path, opts);
+    const body = await r.json().catch(() => r.text());
+    showResult(resultId, r.status, body);
+  } catch (e) {
+    showResult(resultId, 0, `Network error: ${e.message}`);
+  }
+}
+
+async function tryChatRequest() {
+  const model   = document.getElementById('chat-model').value || 'llama3';
+  const content = document.getElementById('chat-message').value || 'Hello!';
+  await tryPost('/api/llm/chat', {
+    model,
+    messages: [{ role: 'user', content }],
+    stream: false,
+  }, 'r-chat');
+}
+
+async function tryEventsRequest() {
+  const limit = document.getElementById('events-limit').value || 10;
+  await tryGet(`/api/events?limit=${limit}`, 'r-events');
+}
+</script>
+</body>
+</html>
