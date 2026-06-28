@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     pc_mac: str = ""
     pc_host: str = "192.168.1.100"
     pc_broadcast: str = "192.168.1.255"
+    # TCP port probed to decide if the PC is up. Defaults to the shutdown
+    # agent's port (8001), which listens whenever the PC is awake. (Windows
+    # has no SSH/22 by default, so the old port-22 probe always read offline.)
+    pc_reachability_port: int = 8001
 
     # Timeouts (seconds)
     host_reachability_timeout: int = 300

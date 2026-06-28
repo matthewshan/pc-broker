@@ -68,7 +68,7 @@ class BrokerState:
             await asyncio.sleep(settings.poll_interval)
 
     async def _refresh(self) -> None:
-        pc_up = await ping_svc.is_reachable(settings.pc_host)
+        pc_up = await ping_svc.is_reachable(settings.pc_host, settings.pc_reachability_port)
 
         async with self._lock:
             self.pc_reachable = pc_up
