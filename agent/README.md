@@ -55,11 +55,15 @@ Verify (returns `{"status":"ok"}` and the PC stays on):
 curl http://localhost:8001/health
 ```
 
-Uninstall:
+Uninstall (run as Administrator — removes the task, firewall rule, and the
+machine env vars the installer set, including the token):
 
 ```powershell
 Unregister-ScheduledTask -TaskName pc-broker-agent -Confirm:$false
 Remove-NetFirewallRule -DisplayName pc-broker-agent
+[Environment]::SetEnvironmentVariable("SHUTDOWN_AGENT_TOKEN", $null, "Machine")
+[Environment]::SetEnvironmentVariable("AGENT_PORT", $null, "Machine")
+[Environment]::SetEnvironmentVariable("AGENT_DRY_RUN", $null, "Machine")
 ```
 
 ## Wake-on-LAN prerequisites (one-time, on the PC)
