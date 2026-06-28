@@ -94,6 +94,9 @@ if ($DryRun) {
 }
 Write-Host "Test with:" -ForegroundColor Green
 Write-Host "  curl http://localhost:$Port/health"
-Write-Host "Uninstall with:"
+Write-Host "Uninstall with (run as Administrator):"
 Write-Host "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false"
 Write-Host "  Remove-NetFirewallRule -DisplayName $TaskName"
+Write-Host "  [Environment]::SetEnvironmentVariable('SHUTDOWN_AGENT_TOKEN', `$null, 'Machine')"
+Write-Host "  [Environment]::SetEnvironmentVariable('AGENT_PORT', `$null, 'Machine')"
+Write-Host "  [Environment]::SetEnvironmentVariable('AGENT_DRY_RUN', `$null, 'Machine')"
