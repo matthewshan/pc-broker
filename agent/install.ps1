@@ -61,10 +61,20 @@ Write-Host "Dry run:    $($DryRun.IsPresent)"
 # Set (or clear) dry-run so re-running install without -DryRun arms it for real.
 [Environment]::SetEnvironmentVariable("AGENT_DRY_RUN", $(if ($DryRun) { "1" } else { $null }), "Machine")
 
-# (Re)register the scheduled task.
+# (Re)register the scheduled task. Stop the running instance AND kill any stale
+# agent process first: unregistering alone leaves the old process alive, still
+# bound to the port with its old env (e.g. a dry-run instance), so the freshly
+# started task can't bind and the stale process keeps answering.
 if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
+Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='py.exe'" |
+    Where-Object { $_.CommandLine -like "*agent.py*" } |
+    ForEach-Object {
+        Write-Host "Killing stale agent process PID $($_.ProcessId)"
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
 
 $action    = New-ScheduledTaskAction -Execute $python -Argument "`"$AgentPath`""
 $trigger   = New-ScheduledTaskTrigger -AtStartup
