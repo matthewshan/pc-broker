@@ -22,4 +22,5 @@ async def get_status():
             "models": [m["name"] for m in broker_state.models],
         },
         "last_wake_request": broker_state.last_wake_request,
+        "idle": broker_state.idle_status(),
     }

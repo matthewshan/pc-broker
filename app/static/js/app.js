@@ -98,11 +98,47 @@ async function refreshStatus() {
       updateChatUI(data.state);
     }
     if (data.state === 'ready' && !modelsLoaded) await loadModels();
+    updateIdleUI(data.idle);
 
     const msgEl = document.getElementById('power-msg');
     if (msgEl) msgEl.textContent = `Refreshed at ${new Date().toLocaleTimeString()}`;
   } catch (err) {
     console.error('Refresh failed', err);
+  }
+}
+
+// ── Idle auto-shutdown ───────────────────────────────────────────────────
+function updateIdleUI(idle) {
+  const label = document.getElementById('keep-awake-label');
+  const checkbox = document.getElementById('keep-awake');
+  const statusEl = document.getElementById('idle-status');
+  if (!label || !idle) return;
+
+  label.hidden = !idle.enabled;
+  statusEl.hidden = !idle.enabled || currentState !== 'ready';
+  if (!idle.enabled) return;
+
+  if (checkbox.checked !== idle.keep_awake) checkbox.checked = idle.keep_awake;
+  if (idle.keep_awake) {
+    statusEl.textContent = '💡 Idle shutdown paused (keep awake).';
+  } else if (idle.llm_idle_seconds != null) {
+    const remaining = Math.max(0, idle.shutdown_after_minutes * 60 - idle.llm_idle_seconds);
+    statusEl.textContent = `🌙 Auto-shutdown in ~${Math.ceil(remaining / 60)} min if PC and chat stay idle.`;
+  } else {
+    statusEl.textContent = '🌙 Idle auto-shutdown armed.';
+  }
+}
+
+async function toggleKeepAwake(ev) {
+  try {
+    await fetch('/api/idle/keep_awake', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: ev.target.checked }),
+    });
+    refreshStatus();
+  } catch (err) {
+    console.error('Keep-awake toggle failed', err);
   }
 }
 
@@ -226,6 +262,7 @@ function initChat() {
   if (!send) return;
   send.addEventListener('click', sendChat);
   stop.addEventListener('click', () => currentAbort && currentAbort.abort());
+  document.getElementById('keep-awake').addEventListener('change', toggleKeepAwake);
   input.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' && !ev.shiftKey) {
       ev.preventDefault();

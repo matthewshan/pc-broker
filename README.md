@@ -60,6 +60,16 @@ Open http://localhost:8000 for the UI; OpenAPI docs at http://localhost:8000/doc
 | `API_TOKEN` | `""` | If set, `/api/power/off` requires `Authorization: Bearer <token>` |
 | `SHUTDOWN_AGENT_URL` | `""` | URL of the shutdown agent on the PC |
 | `SHUTDOWN_AGENT_TOKEN` | `""` | Bearer token the broker sends to the agent |
+| `OLLAMA_URL` | `""` | Ollama base URL; derived as `http://{PC_HOST}:{OLLAMA_PORT}` when empty |
+| `OLLAMA_PORT` | `11434` | Ollama port used when deriving the URL |
+| `OLLAMA_HEALTH_TIMEOUT` | `3.0` | Seconds per Ollama health probe |
+| `IDLE_SHUTDOWN_ENABLED` | `false` | Auto-shutdown the PC when both chat and the local user are idle |
+| `IDLE_SHUTDOWN_MINUTES` | `30` | Minimum minutes since last LLM activity |
+| `IDLE_USER_THRESHOLD_MINUTES` | `20` | Minimum minutes since last local user input |
+| `IDLE_POST_WAKE_GRACE_MINUTES` | `15` | Never auto-shutdown within this window after a wake |
+| `IDLE_ACTIVITY_POLL_INTERVAL` | `60` | Seconds between agent `/activity` polls |
+| `IDLE_GPU_UTIL_THRESHOLD` | `15` | GPU % above which the PC counts as in use (`0` disables) |
+| `IDLE_CONSECUTIVE_CHECKS` | `2` | Idle verdicts in a row required before shutdown |
 
 ---
 
@@ -67,14 +77,18 @@ Open http://localhost:8000 for the UI; OpenAPI docs at http://localhost:8000/doc
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/status` | `state`, `pc.reachable`, `pc.last_seen`, `last_wake_request` |
+| `GET` | `/api/status` | `state`, `pc.*`, `ollama.*`, `idle.*`, `last_wake_request` |
 | `POST` | `/api/power/on` | Send Wake-on-LAN. `202`. Idempotent. |
 | `POST` | `/api/power/off` | Graceful shutdown via the agent. `202`, or `503` if unconfigured. |
+| `GET` | `/api/llm/health` | Live Ollama reachability + broker state |
+| `GET` | `/api/llm/models` | Available Ollama models (`503` unless `ready`) |
+| `POST` | `/api/llm/chat` | Streaming NDJSON chat proxy to Ollama (`503` unless `ready`) |
+| `POST` | `/api/idle/keep_awake` | `{"enabled": bool}` — pause/resume idle auto-shutdown |
 | `GET` | `/api/events?limit=50` | Recent operational events |
 | `GET` | `/healthz` | Liveness |
 | `GET` | `/readyz` | Readiness (process up; no PC dependency) |
 
-States: `offline → waking → host_up` (`timeout` / `error` on failure).
+States: `offline → waking → ollama_starting → ready` (`timeout` / `error` on failure).
 
 ---
 

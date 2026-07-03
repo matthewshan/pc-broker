@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import events, llm, power, status, ui
+from app.routers import events, idle, llm, power, status, ui
 from app.state import broker_state
 
 logging.basicConfig(
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(power.router, tags=["power"])
     app.include_router(events.router, tags=["events"])
     app.include_router(llm.router, tags=["llm"])
+    app.include_router(idle.router, tags=["idle"])
     app.include_router(ui.router, include_in_schema=False)
 
     return app

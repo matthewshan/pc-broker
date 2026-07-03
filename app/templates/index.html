@@ -56,7 +56,11 @@
         <select id="model-select" disabled>
           <option value="">Loading models…</option>
         </select>
+        <label id="keep-awake-label" hidden>
+          <input type="checkbox" id="keep-awake" /> Keep awake
+        </label>
       </div>
+      <p class="msg" id="idle-status" hidden></p>
       <div class="chat-messages" id="chat-messages">
         <p class="muted" id="chat-placeholder">Ask the local model anything.</p>
       </div>
