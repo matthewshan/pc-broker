@@ -52,11 +52,16 @@ class BrokerState:
         self.models: list[dict[str, Any]] = []
         self._wake_requested_at: Optional[float] = None
         self._models_refreshed_at: Optional[float] = None
+        self.last_llm_activity: Optional[float] = None  # time.monotonic()
+        self.active_llm_streams: int = 0
         self._lock = asyncio.Lock()
         self._poll_task: Optional[asyncio.Task] = None
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def note_llm_activity(self) -> None:
+        self.last_llm_activity = time.monotonic()
 
     async def start_background_poll(self) -> None:
         self._poll_task = asyncio.create_task(self._poll_loop())
