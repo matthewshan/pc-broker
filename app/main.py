@@ -5,10 +5,13 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.routers import events, idle, llm, power, status, ui
 from app.state import broker_state
+
+MAX_BODY_BYTES = 1_000_000  # chat history is text; anything bigger is abuse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +33,17 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def limit_body_size(request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > MAX_BODY_BYTES:
+                    return JSONResponse({"detail": "Request body too large"}, status_code=413)
+            except ValueError:
+                return JSONResponse({"detail": "Invalid Content-Length"}, status_code=400)
+        return await call_next(request)
 
     # Health probes. The broker has no external runtime dependency, so it is
     # ready as soon as the process is up; readiness must not depend on the PC

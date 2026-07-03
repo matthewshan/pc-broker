@@ -14,7 +14,10 @@
          and models pulled interactively would be invisible), OLLAMA_KEEP_ALIVE.
       3. Registers a scheduled task that runs `ollama serve` at system startup
          as SYSTEM, mirroring the pc-broker-agent task.
-      4. Opens an inbound firewall rule for the Ollama port scoped to the LAN.
+      4. Opens an inbound firewall rule for the Ollama port, scoped to ONLY
+         the hosts that need it (the broker / k3s node) - Ollama's API has no
+         auth and includes destructive endpoints (/api/delete, /api/pull), so
+         it must not be reachable from the whole LAN.
       5. Pre-pulls the requested models into the shared dir.
 
     Run this from an elevated (Administrator) PowerShell prompt, with Ollama
@@ -23,9 +26,10 @@
 .PARAMETER Port
     TCP port Ollama listens on (default 11434).
 
-.PARAMETER Subnet
-    LAN subnet allowed to reach Ollama through the firewall (default
-    192.168.1.0/24).
+.PARAMETER AllowFrom
+    IPs/subnets allowed to reach Ollama through the firewall. Set this to the
+    broker / k3s node address(es), NOT the whole LAN (default 192.168.1.163,
+    the k3s node).
 
 .PARAMETER ModelsDir
     Shared model directory readable by SYSTEM and interactive users
@@ -41,12 +45,12 @@
     Explicit path to ollama.exe if it is not on PATH or in a standard location.
 
 .EXAMPLE
-    ./install-ollama.ps1 -Subnet 192.168.1.0/24
+    ./install-ollama.ps1 -AllowFrom 192.168.1.163
 #>
 [CmdletBinding()]
 param(
     [int]      $Port      = 11434,
-    [string]   $Subnet    = "192.168.1.0/24",
+    [string[]] $AllowFrom = @("192.168.1.163"),
     [string]   $ModelsDir = "C:\ollama\models",
     [string]   $KeepAlive = "30m",
     [string[]] $Models    = @("qwen3:8b", "gemma3:4b"),
@@ -75,7 +79,7 @@ if (-not $OllamaExe -or -not (Test-Path $OllamaExe)) {
 
 Write-Host "Ollama:     $OllamaExe"
 Write-Host "Port:       $Port"
-Write-Host "Subnet:     $Subnet"
+Write-Host "Allow from: $($AllowFrom -join ', ')"
 Write-Host "Models dir: $ModelsDir"
 Write-Host "Keep alive: $KeepAlive"
 Write-Host "Models:     $($Models -join ', ')"
@@ -126,12 +130,12 @@ $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGo
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Description "Headless Ollama for pc-broker" | Out-Null
 
-# 4. Firewall rule (idempotent), scoped to the LAN subnet.
+# 4. Firewall rule (idempotent), scoped to the broker/k3s host(s) only.
 if (Get-NetFirewallRule -DisplayName $TaskName -ErrorAction SilentlyContinue) {
     Remove-NetFirewallRule -DisplayName $TaskName
 }
 New-NetFirewallRule -DisplayName $TaskName -Direction Inbound -Action Allow `
-    -Protocol TCP -LocalPort $Port -RemoteAddress $Subnet | Out-Null
+    -Protocol TCP -LocalPort $Port -RemoteAddress $AllowFrom | Out-Null
 
 # 5. Start now and pre-pull models into the shared dir.
 Start-ScheduledTask -TaskName $TaskName

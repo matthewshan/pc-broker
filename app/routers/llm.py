@@ -33,6 +33,32 @@ class ChatRequest(BaseModel):
     options: Optional[dict[str, Any]] = None
 
 
+# Ollama honors resource-shaping options per request (num_ctx, num_gpu, ...);
+# an oversized num_ctx can exhaust the PC's VRAM/RAM. Only pass through known
+# sampling options, with hard caps on the context/prediction sizes.
+_ALLOWED_OPTIONS = {
+    "temperature", "top_p", "top_k", "min_p", "seed", "stop",
+    "repeat_penalty", "presence_penalty", "frequency_penalty",
+    "num_ctx", "num_predict",
+}
+_OPTION_CAPS = {"num_ctx": 16384, "num_predict": 8192}
+
+
+def _sanitize_options(options: dict[str, Any]) -> dict[str, Any]:
+    clean: dict[str, Any] = {}
+    for key, value in options.items():
+        if key not in _ALLOWED_OPTIONS:
+            continue
+        cap = _OPTION_CAPS.get(key)
+        if cap is not None:
+            try:
+                value = min(int(value), cap)
+            except (TypeError, ValueError):
+                continue
+        clean[key] = value
+    return clean
+
+
 def _require_ready() -> None:
     if broker_state.state is not State.ready:
         raise HTTPException(
@@ -77,6 +103,8 @@ async def _stream_with_bookkeeping(payload: dict[str, Any]) -> AsyncIterator[byt
 async def llm_chat(req: ChatRequest):
     _require_ready()
     payload = req.model_dump(exclude_none=True)
+    if "options" in payload:
+        payload["options"] = _sanitize_options(payload["options"])
     payload["stream"] = True
 
     # Surface connection/model errors as clean HTTP errors before committing

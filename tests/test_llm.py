@@ -99,3 +99,28 @@ async def test_chat_upstream_unreachable(client):
         assert broker_state.active_llm_streams == 0
     finally:
         broker_state.state = original
+
+
+async def test_sanitize_options_whitelist_and_caps():
+    from app.routers.llm import _sanitize_options
+
+    clean = _sanitize_options(
+        {
+            "temperature": 0.7,
+            "num_ctx": 1_000_000,       # capped
+            "num_predict": "999999",    # capped, coerced to int
+            "num_gpu": 999,             # not whitelisted
+            "use_mmap": False,          # not whitelisted
+            "num_ctx_bogus": 1,         # not whitelisted
+        }
+    )
+    assert clean == {"temperature": 0.7, "num_ctx": 16384, "num_predict": 8192}
+
+
+async def test_request_body_size_cap(client):
+    resp = await client.post(
+        "/api/llm/chat",
+        content=b"{}",
+        headers={"Content-Type": "application/json", "Content-Length": "99999999"},
+    )
+    assert resp.status_code == 413

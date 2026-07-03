@@ -20,6 +20,12 @@
     LAN subnet allowed to reach the agent through the firewall (default
     192.168.1.0/24).
 
+.PARAMETER ReporterUser
+    Account the console idle reporter runs as at logon. Defaults to the
+    current user; pass the daily-driver account explicitly if you install
+    from a separate admin account (otherwise the reporter never runs and
+    idle auto-shutdown silently never arms).
+
 .PARAMETER DryRun
     If set, the agent logs shutdown/restart requests but does NOT power the
     machine off. Use this for the first end-to-end test, then re-run install
@@ -36,6 +42,7 @@ param(
     [Parameter(Mandatory = $true)] [string] $Token,
     [int]    $Port   = 8001,
     [string] $Subnet = "192.168.1.0/24",
+    [string] $ReporterUser = $env:USERNAME,
     [switch] $DryRun
 )
 
@@ -88,6 +95,17 @@ $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGo
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Description "pc-broker shutdown agent" | Out-Null
 
+# Pre-create the idle-file directory with a tight ACL. Without this, the
+# first process to create it under ProgramData owns it with default ACLs,
+# letting any local user spoof idle data and trick the broker into shutting
+# down a machine that is in use.
+$IdleDir = "C:\ProgramData\pc-broker"
+if (-not (Test-Path $IdleDir)) { New-Item -ItemType Directory -Force $IdleDir | Out-Null }
+icacls $IdleDir /inheritance:r `
+    /grant "SYSTEM:(OI)(CI)F" `
+    /grant "BUILTIN\Administrators:(OI)(CI)F" `
+    /grant "${ReporterUser}:(OI)(CI)M" | Out-Null
+
 # Idle reporter: runs agent.py --idle-reporter IN the interactive user session
 # at logon, where GetLastInputInfo works (WTS reports no last-input for the
 # local console, so the SYSTEM agent reads the reporter's file instead).
@@ -102,8 +120,8 @@ if (Get-ScheduledTask -TaskName $ReporterTaskName -ErrorAction SilentlyContinue)
 }
 
 $repAction    = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$AgentPath`" --idle-reporter"
-$repTrigger   = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$repPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+$repTrigger   = New-ScheduledTaskTrigger -AtLogOn -User $ReporterUser
+$repPrincipal = New-ScheduledTaskPrincipal -UserId $ReporterUser -LogonType Interactive
 $repSettings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable `
     -ExecutionTimeLimit (New-TimeSpan -Seconds 0)

@@ -62,11 +62,16 @@ Verify (returns `{"status":"ok"}` and the PC stays on):
 curl http://localhost:8001/health
 ```
 
-Uninstall (run as Administrator — removes the task, firewall rule, and the
-machine env vars the installer set, including the token):
+If you install from a separate admin account, pass `-ReporterUser <daily-user>`
+so the console idle reporter runs for the account that actually uses the PC
+(otherwise idle auto-shutdown silently never arms — fail-safe, but useless).
+
+Uninstall (run as Administrator — removes both tasks, the firewall rule, and
+the machine env vars the installer set, including the token):
 
 ```powershell
 Unregister-ScheduledTask -TaskName pc-broker-agent -Confirm:$false
+Unregister-ScheduledTask -TaskName pc-broker-idle-reporter -Confirm:$false
 Remove-NetFirewallRule -DisplayName pc-broker-agent
 [Environment]::SetEnvironmentVariable("SHUTDOWN_AGENT_TOKEN", $null, "Machine")
 [Environment]::SetEnvironmentVariable("AGENT_PORT", $null, "Machine")
@@ -81,21 +86,33 @@ happens on a machine woken remotely — so `install-ollama.ps1` registers it as
 a startup scheduled task running as `SYSTEM`, mirroring the agent:
 
 ```powershell
-# First install Ollama itself, then:
+winget install Ollama.Ollama    # or the standalone zip
 cd agent
-./install-ollama.ps1 -Subnet 192.168.1.0/24
+./install-ollama.ps1 -AllowFrom 192.168.1.163   # broker / k3s node IP
 ```
 
 The script binds Ollama to the LAN (`OLLAMA_HOST=0.0.0.0:11434`), points it at
 a shared model directory (`OLLAMA_MODELS=C:\ollama\models` — SYSTEM would
 otherwise use its own profile and miss interactively pulled models), disables
 the per-user autostart so the two instances don't fight over the port, opens a
-subnet-scoped firewall rule, and pre-pulls `qwen3:8b` and `gemma3:4b`.
+firewall rule scoped to **only** the `-AllowFrom` hosts (Ollama's API has no
+auth and includes destructive endpoints, so never open it to the whole LAN),
+and pre-pulls `qwen3:8b` and `gemma3:4b`.
 
-Verify after a reboot **without logging in**, from another LAN machine:
+Verify after a reboot **without logging in**, from the broker host:
 
 ```powershell
 curl http://<pc-ip>:11434/api/tags
+```
+
+Uninstall (run as Administrator):
+
+```powershell
+Unregister-ScheduledTask -TaskName pc-broker-ollama -Confirm:$false
+Remove-NetFirewallRule -DisplayName pc-broker-ollama
+[Environment]::SetEnvironmentVariable("OLLAMA_HOST", $null, "Machine")
+[Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $null, "Machine")
+[Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", $null, "Machine")
 ```
 
 ## Wake-on-LAN prerequisites (one-time, on the PC)
