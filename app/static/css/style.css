@@ -131,7 +131,15 @@ small  { color: var(--muted); font-size: 0.8rem; }
 .msg { margin-top: 10px; font-size: 0.9rem; color: var(--muted); min-height: 1.4em; }
 
 /* ── Chat ─────────────────────────────────────────────────────────────── */
-.chat-controls { margin-bottom: 12px; }
+.chat-controls { margin-bottom: 12px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+#chat-offline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+#chat-offline[hidden] { display: none; }
 
 select {
   background: var(--bg);

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Header, HTTPException
 
 from app.config import settings
 from app import events as event_log
+from app.services import agent_client
 from app.state import broker_state
 
 logger = logging.getLogger(__name__)
@@ -46,13 +47,8 @@ async def power_off(authorization: str | None = Header(default=None)):
             status_code=503,
             detail="Shutdown agent not configured (SHUTDOWN_AGENT_URL is not set)",
         )
-    headers = {}
-    if settings.shutdown_agent_token:
-        headers["Authorization"] = f"Bearer {settings.shutdown_agent_token}"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(f"{settings.shutdown_agent_url}/shutdown", headers=headers)
-            resp.raise_for_status()
+        await agent_client.shutdown()
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=502, detail=f"Shutdown agent returned {exc.response.status_code}") from exc
     except Exception as exc:

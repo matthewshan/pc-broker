@@ -24,6 +24,11 @@
           <span>{% if pc.reachable %}Reachable{% else %}Offline{% endif %}</span>
           {% if pc.last_seen %}<small>Last seen: {{ pc.last_seen }}</small>{% endif %}
         </div>
+        <div class="status-item" id="ollama-status">
+          <span class="label">Ollama</span>
+          <span class="dot {% if ollama.reachable %}dot-green{% else %}dot-red{% endif %}"></span>
+          <span class="ollama-text">{% if ollama.reachable %}Ready{% else %}Unavailable{% endif %}</span>
+        </div>
         {% if last_wake_request %}
         <div class="status-item">
           <span class="label">Last wake request</span>
@@ -44,11 +49,38 @@
       <p id="power-msg" class="msg"></p>
     </section>
 
+    <!-- ── Chat ────────────────────────────────────────────────── -->
+    <section class="card" id="chat-card">
+      <h2>Chat</h2>
+      <div class="chat-controls">
+        <select id="model-select" disabled>
+          <option value="">Loading models…</option>
+        </select>
+        <label id="keep-awake-label" hidden>
+          <input type="checkbox" id="keep-awake" /> Keep awake
+        </label>
+      </div>
+      <p class="msg" id="idle-status" hidden></p>
+      <div class="chat-messages" id="chat-messages">
+        <p class="muted" id="chat-placeholder">Ask the local model anything.</p>
+      </div>
+      <div id="chat-offline" class="msg" hidden>
+        <span id="chat-offline-text">PC is offline.</span>
+        <button class="btn btn-green" id="chat-wake-btn" onclick="powerAction('on')">⚡ Wake it</button>
+      </div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" rows="2" placeholder="Ask the local model…" disabled></textarea>
+        <button class="btn btn-blue" id="chat-send" disabled>Send</button>
+        <button class="btn btn-red" id="chat-stop" hidden>Stop</button>
+      </div>
+    </section>
+
     <!-- ── Diagnostics ─────────────────────────────────────────── -->
     <section class="card" id="diag-card">
       <h2>Diagnostics</h2>
       <table class="diag-table">
         <tr><th>PC Host</th><td>{{ pc.host }}</td></tr>
+        <tr><th>Ollama Endpoint</th><td>{{ ollama.endpoint }}</td></tr>
         <tr><th>Broker Version</th><td>{{ version }}</td></tr>
         <tr><th>Host Reachability Timeout</th><td>{{ host_reachability_timeout }}s</td></tr>
         <tr><th>Poll Interval</th><td>{{ poll_interval }}s</td></tr>
