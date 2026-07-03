@@ -66,6 +66,31 @@ Remove-NetFirewallRule -DisplayName pc-broker-agent
 [Environment]::SetEnvironmentVariable("AGENT_DRY_RUN", $null, "Machine")
 ```
 
+## Headless Ollama (LLM chat)
+
+The broker's chat panel talks to Ollama on this PC directly (port 11434).
+Ollama's standard installer only autostarts per-user at login, which never
+happens on a machine woken remotely — so `install-ollama.ps1` registers it as
+a startup scheduled task running as `SYSTEM`, mirroring the agent:
+
+```powershell
+# First install Ollama itself, then:
+cd agent
+./install-ollama.ps1 -Subnet 192.168.1.0/24
+```
+
+The script binds Ollama to the LAN (`OLLAMA_HOST=0.0.0.0:11434`), points it at
+a shared model directory (`OLLAMA_MODELS=C:\ollama\models` — SYSTEM would
+otherwise use its own profile and miss interactively pulled models), disables
+the per-user autostart so the two instances don't fight over the port, opens a
+subnet-scoped firewall rule, and pre-pulls `qwen3:8b` and `gemma3:4b`.
+
+Verify after a reboot **without logging in**, from another LAN machine:
+
+```powershell
+curl http://<pc-ip>:11434/api/tags
+```
+
 ## Wake-on-LAN prerequisites (one-time, on the PC)
 
 Power-*on* (priority 1) depends on these — the agent is not involved in waking:
