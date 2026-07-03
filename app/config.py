@@ -26,6 +26,26 @@ class Settings(BaseSettings):
     shutdown_agent_url: str = ""
     shutdown_agent_token: str = ""
 
+    # Ollama on the gaming PC. If OLLAMA_URL is unset, it is derived from
+    # PC_HOST and OLLAMA_PORT.
+    ollama_url: str = ""
+    ollama_port: int = 11434
+    ollama_health_timeout: float = 3.0
+
+    # Idle auto-shutdown. Disabled unless explicitly enabled; every ambiguous
+    # signal is treated as "user is active" (never shut down when unsure).
+    idle_shutdown_enabled: bool = False
+    idle_shutdown_minutes: int = 30
+    idle_user_threshold_minutes: int = 20
+    idle_post_wake_grace_minutes: int = 15
+    idle_activity_poll_interval: float = 60.0
+    idle_gpu_util_threshold: int = 15
+    idle_consecutive_checks: int = 2
+
+    @property
+    def ollama_base_url(self) -> str:
+        return self.ollama_url or f"http://{self.pc_host}:{self.ollama_port}"
+
     # Misc
     broker_version: str = "0.1.0"
 

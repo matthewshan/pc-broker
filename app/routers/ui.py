@@ -27,6 +27,10 @@ async def index(request: Request):
                 "last_seen": broker_state.last_seen,
                 "host": settings.pc_host,
             },
+            "ollama": {
+                "reachable": broker_state.ollama_reachable,
+                "endpoint": settings.ollama_base_url,
+            },
             "last_wake_request": broker_state.last_wake_request,
             "events": events,
             "version": settings.broker_version,

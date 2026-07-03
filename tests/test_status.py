@@ -27,3 +27,6 @@ async def test_status_shape(client):
     assert "reachable" in data["pc"]
     assert "last_seen" in data["pc"]
     assert "last_wake_request" in data
+    assert "ollama" in data
+    assert "reachable" in data["ollama"]
+    assert isinstance(data["ollama"]["models"], list)
