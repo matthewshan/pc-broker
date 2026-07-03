@@ -9,11 +9,18 @@ Uses only the Python standard library — no `pip install` required on the PC.
 
 ## Endpoints
 
-| Method | Path        | Auth        | Action                |
-|--------|-------------|-------------|-----------------------|
-| GET    | `/health`   | none        | liveness check        |
-| POST   | `/shutdown` | Bearer token | `shutdown /s /t 0`   |
-| POST   | `/restart`  | Bearer token | `shutdown /r /t 0`   |
+| Method | Path        | Auth         | Action                              |
+|--------|-------------|--------------|-------------------------------------|
+| GET    | `/health`   | none         | liveness check                      |
+| GET    | `/activity` | Bearer token | user-activity report (idle shutdown)|
+| POST   | `/shutdown` | Bearer token | `shutdown /s /t 0`                  |
+| POST   | `/restart`  | Bearer token | `shutdown /r /t 0`                  |
+
+`/activity` reports per-session state/lock/idle (WTS API), console idle time
+(via a logon-triggered in-session reporter task, since WTS omits last-input
+for the local console), and GPU utilization. The agent only reports raw
+facts; the broker applies thresholds. Anything unknown reads as "user is
+active" so the broker never shuts down on ambiguous data.
 
 Auth is `Authorization: Bearer <SHUTDOWN_AGENT_TOKEN>`. The token must match the
 `SHUTDOWN_AGENT_TOKEN` key in the broker's `pc-broker-secrets` k8s secret.

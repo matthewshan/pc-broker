@@ -79,11 +79,38 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='py.exe'" |
 $action    = New-ScheduledTaskAction -Execute $python -Argument "`"$AgentPath`""
 $trigger   = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+# ExecutionTimeLimit 0 = unlimited; the default (72h) would kill the agent
+# after three days of uptime.
 $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable
+    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Principal $principal -Settings $settings -Description "pc-broker shutdown agent" | Out-Null
+
+# Idle reporter: runs agent.py --idle-reporter IN the interactive user session
+# at logon, where GetLastInputInfo works (WTS reports no last-input for the
+# local console, so the SYSTEM agent reads the reporter's file instead).
+# pythonw avoids a console window at logon.
+$ReporterTaskName = "pc-broker-idle-reporter"
+$pythonw = Join-Path (Split-Path $python) "pythonw.exe"
+if (-not (Test-Path $pythonw)) { $pythonw = $python }
+
+if (Get-ScheduledTask -TaskName $ReporterTaskName -ErrorAction SilentlyContinue) {
+    Stop-ScheduledTask -TaskName $ReporterTaskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $ReporterTaskName -Confirm:$false
+}
+
+$repAction    = New-ScheduledTaskAction -Execute $pythonw -Argument "`"$AgentPath`" --idle-reporter"
+$repTrigger   = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$repPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive
+$repSettings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+
+Register-ScheduledTask -TaskName $ReporterTaskName -Action $repAction -Trigger $repTrigger `
+    -Principal $repPrincipal -Settings $repSettings -Description "pc-broker console idle reporter" | Out-Null
+Start-ScheduledTask -TaskName $ReporterTaskName
 
 # Firewall rule (idempotent).
 if (Get-NetFirewallRule -DisplayName $TaskName -ErrorAction SilentlyContinue) {
@@ -106,6 +133,7 @@ Write-Host "Test with:" -ForegroundColor Green
 Write-Host "  curl http://localhost:$Port/health"
 Write-Host "Uninstall with (run as Administrator):"
 Write-Host "  Unregister-ScheduledTask -TaskName $TaskName -Confirm:`$false"
+Write-Host "  Unregister-ScheduledTask -TaskName $ReporterTaskName -Confirm:`$false"
 Write-Host "  Remove-NetFirewallRule -DisplayName $TaskName"
 Write-Host "  [Environment]::SetEnvironmentVariable('SHUTDOWN_AGENT_TOKEN', `$null, 'Machine')"
 Write-Host "  [Environment]::SetEnvironmentVariable('AGENT_PORT', `$null, 'Machine')"
