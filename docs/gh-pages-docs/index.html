@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LLM PC Broker — Docs</title>
+  <title>PC Broker — Docs</title>
   <style>
     :root {
       --bg: #0f1117;
@@ -289,8 +289,8 @@
 <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
 <nav>
   <div class="nav-logo">
-    <h1>🖥️ LLM PC Broker</h1>
-    <span>API Documentation</span>
+    <h1>🖥️ PC Broker</h1>
+    <span>API Documentation · v0.2.0</span>
   </div>
   <ul>
     <li class="nav-section">Overview</li>
@@ -303,6 +303,7 @@
     <li><a href="#status">Status</a></li>
     <li><a href="#power">Power</a></li>
     <li><a href="#llm">LLM</a></li>
+    <li><a href="#idle">Idle Auto-Shutdown</a></li>
     <li><a href="#events">Events</a></li>
     <li><a href="#health">Health Probes</a></li>
 
@@ -310,6 +311,8 @@
     <li><a href="#config">Environment Variables</a></li>
 
     <li class="nav-section">Deployment</li>
+    <li><a href="#pc-setup">Gaming PC Setup</a></li>
+    <li><a href="#models">Model Selection</a></li>
     <li><a href="#kubernetes">Kubernetes</a></li>
     <li><a href="#security">Security</a></li>
   </ul>
@@ -322,13 +325,15 @@
   <section id="introduction">
     <h2>Introduction</h2>
     <p>
-      <strong>LLM PC Broker</strong> is an internal service that sits between your homelab Kubernetes cluster
+      <strong>PC Broker</strong> is an internal service that sits between your homelab Kubernetes cluster
       and a gaming PC running <a href="https://ollama.com/" target="_blank">Ollama</a>. It handles power
-      management (Wake-on-LAN), readiness polling, and request proxying — so internal applications always
-      have a stable API endpoint regardless of whether the gaming PC is on or off.
+      management (Wake-on-LAN wake, agent-based graceful shutdown), continuous reachability polling, a
+      streaming chat proxy to Ollama, and an optional fail-safe idle auto-shutdown — so the PC can stay
+      off most of the time and be woken from a phone when needed.
     </p>
     <p>
-      A lightweight built-in UI provides a status dashboard, power controls, and a chat interface.
+      A lightweight built-in UI at <code>/</code> provides a status dashboard, power controls, and a
+      streaming chat panel that lists whatever models Ollama has pulled.
     </p>
     <div class="alert alert-blue">
       💡 This service is <strong>internal-only</strong>. It should never be exposed to the public internet.
@@ -351,33 +356,38 @@
     <pre><code>Browser / Internal App
         │
         ▼
-  llm-pc-broker  (Kubernetes pod)
-  ├─ Background poll loop  ─────────────────────────────────────┐
-  ├─ State machine (offline → waking → host_up → ready)        │
+  pc-broker  (Kubernetes pod, hostNetwork)
+  ├─ Background poll loop (every POLL_INTERVAL s) ──────────────┐
+  ├─ State machine (offline → waking → ollama_starting → ready)│
+  ├─ Idle auto-shutdown tick (optional, fail-safe)              │
   ├─ Event ring buffer (last 200 events)                        │
   │                                                              │
-  ├─ GET  /api/status       ← combined PC + Ollama state        │
-  ├─ POST /api/power/on     ← sends WoL UDP magic packet        │
-  ├─ POST /api/power/off    ← calls shutdown agent on PC        │
-  ├─ GET  /api/llm/models   ← proxies /api/tags from Ollama     │
-  ├─ POST /api/llm/chat     ← wake-and-wait, then proxy         │
-  ├─ GET  /api/events       ← recent operational events         │
-  └─ GET  /                 ← built-in chat + status UI         │
+  ├─ GET  /api/status          ← combined PC + Ollama + idle    │
+  ├─ POST /api/power/on        ← sends WoL UDP magic packet     │
+  ├─ POST /api/power/off       ← calls shutdown agent on PC     │
+  ├─ GET  /api/llm/health      ← Ollama reachability + state    │
+  ├─ GET  /api/llm/models      ← proxies /api/tags from Ollama  │
+  ├─ POST /api/llm/chat        ← streaming NDJSON passthrough   │
+  ├─ POST /api/idle/keep_awake ← pause/resume idle shutdown     │
+  ├─ GET  /api/events          ← recent operational events      │
+  └─ GET  /                    ← built-in chat + status UI      │
         │                                                        │
-        ▼  (LAN)           polling every 5s ◄───────────────────┘
+        ▼  (LAN)                                                 ▼
   Gaming PC
-  └─ Ollama :11434</code></pre>
+  ├─ pc-broker agent :8001  ← reachability probe + shutdown + /activity
+  └─ Ollama :11434          ← headless SYSTEM task (install-ollama.ps1)</code></pre>
 
-    <h3>Wake-and-Wait Flow</h3>
-    <p>When an LLM request arrives and Ollama is not ready:</p>
-    <pre><code>LLM request arrives
-  └─ Ollama reachable? ──yes──► proxy immediately
-       └─ no
-           └─ PC reachable? ──no──► send Wake-on-LAN (UDP broadcast)
-               └─ poll PC reachability  (timeout: HOST_REACHABILITY_TIMEOUT)
-                   └─ poll Ollama readiness (timeout: OLLAMA_READINESS_TIMEOUT)
-                       ├─ ready ──► proxy request
-                       └─ timeout ──► 503 + {"error": "warming_up"}</code></pre>
+    <h3>Wake Flow</h3>
+    <p>
+      The broker never blocks a chat request on a wake. Chat requires the <code>ready</code> state;
+      anything else returns <code>503</code>, which the UI turns into a wake prompt:
+    </p>
+    <pre><code>POST /api/llm/chat
+  └─ state == ready? ──yes──► stream NDJSON from Ollama
+       └─ no ──► 503 {"detail": "PC/Ollama not ready", "state": "..."}
+                   └─ UI shows "Wake PC" → POST /api/power/on
+                        └─ poll loop watches the PC come up
+                             offline → waking → ollama_starting → ready</code></pre>
   </section>
 
   <!-- States -->
@@ -389,8 +399,6 @@
       <span class="state-node badge badge-gray">offline</span>
       <span class="arrow">→</span>
       <span class="state-node badge badge-yellow">waking</span>
-      <span class="arrow">→</span>
-      <span class="state-node badge badge-blue">host_up</span>
       <span class="arrow">→</span>
       <span class="state-node badge badge-blue">ollama_starting</span>
       <span class="arrow">→</span>
@@ -407,12 +415,12 @@
     <table>
       <thead><tr><th>State</th><th>Meaning</th></tr></thead>
       <tbody>
-        <tr><td><code>offline</code></td><td>PC and Ollama are not reachable</td></tr>
-        <tr><td><code>waking</code></td><td>WoL packet sent; waiting for PC to respond</td></tr>
-        <tr><td><code>host_up</code></td><td>PC is pingable; Ollama not yet ready</td></tr>
-        <tr><td><code>ollama_starting</code></td><td>Ollama port open; models may still be loading</td></tr>
-        <tr><td><code>ready</code></td><td>Ollama is healthy and models are available</td></tr>
-        <tr><td><code>timeout</code></td><td>Wake or readiness attempt exceeded timeout</td></tr>
+        <tr><td><code>offline</code></td><td>PC is not reachable (TCP probe on <code>PC_REACHABILITY_PORT</code> fails)</td></tr>
+        <tr><td><code>waking</code></td><td>WoL packet sent; waiting for the PC to respond</td></tr>
+        <tr><td><code>host_up</code></td><td><em>Legacy</em> — the poll loop now lands on <code>ollama_starting</code>/<code>ready</code> instead</td></tr>
+        <tr><td><code>ollama_starting</code></td><td>PC is reachable but Ollama is not answering yet</td></tr>
+        <tr><td><code>ready</code></td><td>PC is reachable and Ollama is healthy</td></tr>
+        <tr><td><code>timeout</code></td><td>Wake attempt exceeded <code>HOST_REACHABILITY_TIMEOUT</code></td></tr>
         <tr><td><code>error</code></td><td>Unexpected error during polling</td></tr>
       </tbody>
     </table>
@@ -422,19 +430,19 @@
   <section id="quickstart">
     <h2>Quick Start</h2>
     <h3>Run locally</h3>
+    <p>The Ollama URL is derived from <code>PC_HOST</code> and <code>OLLAMA_PORT</code> unless
+    <code>OLLAMA_URL</code> is set explicitly. Settings can also live in a <code>.env</code> file.</p>
     <pre><code>pip install -r requirements.txt
 
 PC_MAC=aa:bb:cc:dd:ee:ff \
 PC_HOST=192.168.1.100 \
-OLLAMA_BASE_URL=http://192.168.1.100:11434 \
 uvicorn app.main:app --reload</code></pre>
 
     <h3>Run with Docker</h3>
     <pre><code>docker run -p 8000:8000 \
   -e PC_MAC=aa:bb:cc:dd:ee:ff \
   -e PC_HOST=192.168.1.100 \
-  -e OLLAMA_BASE_URL=http://192.168.1.100:11434 \
-  ghcr.io/matthewshan/llm-pc-broker:latest</code></pre>
+  ghcr.io/matthewshan/pc-broker:latest</code></pre>
 
     <h3>Run tests</h3>
     <pre><code>pip install -r requirements-dev.txt
@@ -453,17 +461,30 @@ pytest tests/ -v</code></pre>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Returns the current state of the broker, PC reachability, and Ollama readiness.</p>
+        <p>Returns the current state of the broker, PC reachability, Ollama readiness, and idle-shutdown status.</p>
         <h4>Response</h4>
         <pre><code>{
   "state": "ready",
   "pc": {
     "reachable": true,
-    "last_seen": "2026-05-17T12:00:00Z"
+    "last_seen": "2026-07-07T12:00:00Z"
   },
   "ollama": {
     "reachable": true,
-    "models": ["llama3", "deepseek-r1"]
+    "last_checked": "2026-07-07T12:00:00Z",
+    "models": ["qwen3.5:9b", "qwen3.5:4b", "gemma4:e4b-it-qat"]
+  },
+  "last_wake_request": "2026-07-07T11:55:00Z",
+  "idle": {
+    "enabled": false,
+    "keep_awake": false,
+    "active_streams": 0,
+    "strikes": 0,
+    "shutdown_after_minutes": 30,
+    "llm_idle_seconds": 512.3,
+    "min_active_idle_seconds": null,
+    "gpu_util_percent": null,
+    "last_idle_shutdown": null
   }
 }</code></pre>
         <div class="try-panel">
@@ -507,8 +528,8 @@ pytest tests/ -v</code></pre>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Calls the optional shutdown agent running on the gaming PC. Returns <code>202</code> on success, <code>503</code> if the agent is not configured or unreachable.</p>
-        <div class="alert alert-yellow">⚠️ Requires <code>SHUTDOWN_AGENT_URL</code> to be configured.</div>
+        <p>Calls the shutdown agent running on the gaming PC (<code>agent/</code> in this repo). Returns <code>202</code> on success, <code>502</code> if the agent errors, <code>503</code> if it is not configured or unreachable.</p>
+        <div class="alert alert-yellow">⚠️ Requires <code>SHUTDOWN_AGENT_URL</code> to be configured. When <code>API_TOKEN</code> is set, this endpoint additionally requires an <code>Authorization: Bearer &lt;token&gt;</code> header.</div>
         <div class="try-panel">
           <h4>Try it</h4>
           <button class="btn-try" onclick="tryPost('/api/power/off', null, 'r-power-off')">Send Request</button>
@@ -530,7 +551,9 @@ pytest tests/ -v</code></pre>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Returns <code>{"status": "ok"}</code> when Ollama is reachable, <code>503</code> otherwise.</p>
+        <p>Always returns <code>200</code> with the live Ollama reachability and the broker state. The UI polls this to decide between the chat panel and the wake prompt.</p>
+        <h4>Response</h4>
+        <pre><code>{ "reachable": true, "state": "ready" }</code></pre>
         <div class="try-panel">
           <h4>Try it</h4>
           <button class="btn-try" onclick="tryGet('/api/llm/health', 'r-llm-health')">Send Request</button>
@@ -547,9 +570,14 @@ pytest tests/ -v</code></pre>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Proxies <code>GET /api/tags</code> from Ollama and returns model names.</p>
+        <p>Proxies <code>GET /api/tags</code> from Ollama. Requires the <code>ready</code> state (<code>503</code> otherwise); returns <code>502</code> if Ollama fails the listing.</p>
         <h4>Response</h4>
-        <pre><code>{ "models": ["llama3", "deepseek-r1"] }</code></pre>
+        <pre><code>{
+  "models": [
+    { "name": "qwen3.5:9b", "size": 6594474711, "modified_at": "2026-07-07T19:34:22-04:00" },
+    { "name": "gemma4:e4b-it-qat", "size": 6146501801, "modified_at": "2026-07-07T19:34:26-04:00" }
+  ]
+}</code></pre>
         <div class="try-panel">
           <h4>Try it</h4>
           <button class="btn-try" onclick="tryGet('/api/llm/models', 'r-llm-models')">Send Request</button>
@@ -562,24 +590,49 @@ pytest tests/ -v</code></pre>
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="method post">POST</span>
         <span class="endpoint-path">/api/llm/chat</span>
-        <span class="endpoint-summary">Chat proxy with wake-and-wait</span>
+        <span class="endpoint-summary">Streaming chat passthrough</span>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Accepts an Ollama-format chat request. If the PC is offline, automatically wakes it and waits before proxying. Returns <code>503</code> with <code>{"error":"warming_up"}</code> if readiness times out.</p>
+        <p>
+          Accepts an Ollama-format chat request and streams the response back as NDJSON
+          (<code>application/x-ndjson</code>), exactly as Ollama produces it. Streaming is always on —
+          a <code>stream</code> field in the request is ignored.
+        </p>
+        <p>
+          Requires the <code>ready</code> state; otherwise returns
+          <code>503 {"detail": "PC/Ollama not ready", "state": "..."}</code>, which the built-in UI turns
+          into a wake prompt. Connection or model errors surface as <code>502</code>/<code>503</code>
+          before the first streamed byte.
+        </p>
         <h4>Request body</h4>
         <pre><code>{
-  "model": "llama3",
+  "model": "qwen3.5:9b",
   "messages": [
     { "role": "user", "content": "Hello!" }
   ],
-  "stream": false
+  "options": { "temperature": 0.7, "num_ctx": 8192 }
 }</code></pre>
+        <h4>Options sanitization</h4>
+        <p>
+          Ollama honors resource-shaping options per request, and an oversized <code>num_ctx</code> can
+          exhaust the PC's VRAM/RAM. Only known sampling options are passed through
+          (<code>temperature</code>, <code>top_p</code>, <code>top_k</code>, <code>min_p</code>,
+          <code>seed</code>, <code>stop</code>, <code>repeat_penalty</code>, <code>presence_penalty</code>,
+          <code>frequency_penalty</code>, <code>num_ctx</code>, <code>num_predict</code>), with hard caps:
+        </p>
+        <table>
+          <thead><tr><th>Option</th><th>Cap</th></tr></thead>
+          <tbody>
+            <tr><td><code>num_ctx</code></td><td>16384</td></tr>
+            <tr><td><code>num_predict</code></td><td>8192</td></tr>
+          </tbody>
+        </table>
         <div class="try-panel">
           <h4>Try it</h4>
           <div class="try-row">
             <label>Model</label>
-            <input id="chat-model" type="text" value="llama3" />
+            <input id="chat-model" type="text" value="qwen3.5:9b" />
           </div>
           <div class="try-row">
             <label>Message</label>
@@ -590,32 +643,46 @@ pytest tests/ -v</code></pre>
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- Idle Auto-Shutdown -->
+  <section id="idle">
+    <h2>Idle Auto-Shutdown</h2>
+    <p>
+      When armed with <code>IDLE_SHUTDOWN_ENABLED=true</code>, the broker shuts the PC down after it has
+      been idle for <code>IDLE_SHUTDOWN_MINUTES</code>. It is <strong>disabled by default</strong> and
+      designed fail-safe: every ambiguous signal is treated as "user is active" — the broker never shuts
+      down when unsure.
+    </p>
+    <p>A shutdown is only triggered when <em>all</em> of the following hold, for
+      <code>IDLE_CONSECUTIVE_CHECKS</code> consecutive checks (one per
+      <code>IDLE_ACTIVITY_POLL_INTERVAL</code>):</p>
+    <table>
+      <thead><tr><th>Signal</th><th>Condition</th></tr></thead>
+      <tbody>
+        <tr><td>Broker state</td><td><code>ready</code>, and past the post-wake grace period (<code>IDLE_POST_WAKE_GRACE_MINUTES</code>)</td></tr>
+        <tr><td>LLM activity</td><td>No active chat streams; last LLM activity older than <code>IDLE_SHUTDOWN_MINUTES</code></td></tr>
+        <tr><td>User input</td><td>Agent-reported console idle time above <code>IDLE_USER_THRESHOLD_MINUTES</code></td></tr>
+        <tr><td>GPU</td><td>Utilization below <code>IDLE_GPU_UTIL_THRESHOLD</code> percent</td></tr>
+        <tr><td>Keep-awake</td><td>Not enabled via <code>/api/idle/keep_awake</code></td></tr>
+      </tbody>
+    </table>
+    <p>User-activity and GPU data come from the agent's <code>/activity</code> endpoint (agent v0.2+ with
+      the <code>pc-broker-idle-reporter</code> logon task). A missing or stale report counts as active.</p>
 
     <div class="endpoint">
       <div class="endpoint-header" onclick="toggleEndpoint(this)">
         <span class="method post">POST</span>
-        <span class="endpoint-path">/api/llm/generate</span>
-        <span class="endpoint-summary">Raw generate proxy</span>
+        <span class="endpoint-path">/api/idle/keep_awake</span>
+        <span class="endpoint-summary">Pause/resume idle auto-shutdown</span>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Proxies a raw generate request to Ollama. Same wake-and-wait behavior as <code>/api/llm/chat</code>.</p>
+        <p>Toggles the keep-awake flag (also exposed in the UI). While enabled, idle auto-shutdown never triggers. Resets the current strike count.</p>
         <h4>Request body</h4>
-        <pre><code>{ "model": "llama3", "prompt": "Why is the sky blue?", "stream": false }</code></pre>
-      </div>
-    </div>
-
-    <div class="endpoint">
-      <div class="endpoint-header" onclick="toggleEndpoint(this)">
-        <span class="method post">POST</span>
-        <span class="endpoint-path">/api/llm/embeddings</span>
-        <span class="endpoint-summary">Embeddings proxy</span>
-        <span class="chevron">▶</span>
-      </div>
-      <div class="endpoint-body">
-        <p>Proxies an embeddings request to Ollama.</p>
-        <h4>Request body</h4>
-        <pre><code>{ "model": "llama3", "prompt": "The sky is blue." }</code></pre>
+        <pre><code>{ "enabled": true }</code></pre>
+        <h4>Response</h4>
+        <pre><code>{ "keep_awake": true }</code></pre>
       </div>
     </div>
   </section>
@@ -643,16 +710,23 @@ pytest tests/ -v</code></pre>
         <h4>Response</h4>
         <pre><code>[
   {
-    "timestamp": "2026-05-17T12:01:00Z",
+    "timestamp": "2026-07-07T12:01:00Z",
     "kind": "wake_request",
     "message": "Wake-on-LAN request initiated"
   },
   {
-    "timestamp": "2026-05-17T12:03:45Z",
+    "timestamp": "2026-07-07T12:03:45Z",
     "kind": "state_change",
     "message": "State changed from waking to ready"
+  },
+  {
+    "timestamp": "2026-07-07T12:05:02Z",
+    "kind": "proxy_request",
+    "message": "Chat request proxied to model qwen3.5:9b"
   }
 ]</code></pre>
+        <p>Event kinds: <code>state_change</code>, <code>wake_request</code>, <code>shutdown_request</code>,
+          <code>proxy_request</code>, <code>idle_shutdown</code>, <code>keep_awake</code>.</p>
         <div class="try-panel">
           <h4>Try it</h4>
           <div class="try-row">
@@ -680,7 +754,7 @@ pytest tests/ -v</code></pre>
         <tr>
           <td><code>/readyz</code></td><td><span class="method get">GET</span></td>
           <td>Kubernetes readiness probe</td>
-          <td><code>200</code> when Ollama reachable, <code>503</code> otherwise</td>
+          <td>Always <code>200</code> — the broker is ready as soon as the process is up. Readiness deliberately does <em>not</em> depend on the PC, which is expected to be off most of the time</td>
         </tr>
       </tbody>
     </table>
@@ -694,21 +768,138 @@ pytest tests/ -v</code></pre>
   <!-- Config -->
   <section id="config">
     <h2>Environment Variables</h2>
+    <p>Settings load from the environment or a <code>.env</code> file (pydantic-settings).</p>
+    <h3>Gaming PC</h3>
     <table>
       <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
       <tbody>
-        <tr><td><code>PC_MAC</code></td><td><em>(required)</em></td><td>MAC address of gaming PC — needed for WoL</td></tr>
+        <tr><td><code>PC_MAC</code></td><td><em>(required for wake)</em></td><td>MAC address of gaming PC — needed for WoL</td></tr>
         <tr><td><code>PC_HOST</code></td><td><code>192.168.1.100</code></td><td>IP or hostname of gaming PC</td></tr>
         <tr><td><code>PC_BROADCAST</code></td><td><code>192.168.1.255</code></td><td>UDP broadcast address for WoL</td></tr>
-        <tr><td><code>OLLAMA_BASE_URL</code></td><td><code>http://192.168.1.100:11434</code></td><td>Ollama API base URL</td></tr>
-        <tr><td><code>HOST_REACHABILITY_TIMEOUT</code></td><td><code>300</code></td><td>Seconds to wait for PC (ping)</td></tr>
-        <tr><td><code>OLLAMA_READINESS_TIMEOUT</code></td><td><code>600</code></td><td>Seconds to wait for Ollama</td></tr>
-        <tr><td><code>POLL_INTERVAL</code></td><td><code>5</code></td><td>Seconds between health-check polls</td></tr>
-        <tr><td><code>API_TOKEN</code></td><td><em>(optional)</em></td><td>Shared secret for programmatic access</td></tr>
-        <tr><td><code>SHUTDOWN_AGENT_URL</code></td><td><em>(optional)</em></td><td>URL of shutdown agent on gaming PC</td></tr>
-        <tr><td><code>SHUTDOWN_AGENT_TOKEN</code></td><td><em>(optional)</em></td><td>Auth token for shutdown agent</td></tr>
+        <tr><td><code>PC_REACHABILITY_PORT</code></td><td><code>8001</code></td><td>TCP port probed to decide if the PC is up — defaults to the shutdown agent's port, which listens whenever the PC is awake (Windows has no SSH/22 by default)</td></tr>
+        <tr><td><code>HOST_REACHABILITY_TIMEOUT</code></td><td><code>300</code></td><td>Seconds a wake attempt may take before the state becomes <code>timeout</code></td></tr>
+        <tr><td><code>POLL_INTERVAL</code></td><td><code>5</code></td><td>Seconds between reachability polls</td></tr>
       </tbody>
     </table>
+    <h3>Ollama</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>OLLAMA_URL</code></td><td><em>(derived)</em></td><td>Ollama base URL; when unset, derived as <code>http://{PC_HOST}:{OLLAMA_PORT}</code></td></tr>
+        <tr><td><code>OLLAMA_PORT</code></td><td><code>11434</code></td><td>Ollama port used for the derived URL</td></tr>
+        <tr><td><code>OLLAMA_HEALTH_TIMEOUT</code></td><td><code>3.0</code></td><td>Seconds for the <code>/api/version</code> health probe</td></tr>
+      </tbody>
+    </table>
+    <h3>Auth &amp; agent</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>API_TOKEN</code></td><td><em>(optional)</em></td><td>When set, <code>/api/power/off</code> requires <code>Authorization: Bearer &lt;token&gt;</code></td></tr>
+        <tr><td><code>SHUTDOWN_AGENT_URL</code></td><td><em>(optional)</em></td><td>URL of the shutdown agent on the gaming PC (e.g. <code>http://192.168.1.77:8001</code>)</td></tr>
+        <tr><td><code>SHUTDOWN_AGENT_TOKEN</code></td><td><em>(optional)</em></td><td>Auth token for the shutdown agent</td></tr>
+      </tbody>
+    </table>
+    <h3>Idle auto-shutdown</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>IDLE_SHUTDOWN_ENABLED</code></td><td><code>false</code></td><td>Master switch — everything below is inert unless this is true</td></tr>
+        <tr><td><code>IDLE_SHUTDOWN_MINUTES</code></td><td><code>30</code></td><td>Minutes without LLM activity before the PC is considered idle</td></tr>
+        <tr><td><code>IDLE_USER_THRESHOLD_MINUTES</code></td><td><code>20</code></td><td>Minutes of console input idle required per active session</td></tr>
+        <tr><td><code>IDLE_POST_WAKE_GRACE_MINUTES</code></td><td><code>15</code></td><td>Never shut down within this window after a wake request</td></tr>
+        <tr><td><code>IDLE_ACTIVITY_POLL_INTERVAL</code></td><td><code>60</code></td><td>Seconds between agent activity polls (= strike cadence)</td></tr>
+        <tr><td><code>IDLE_GPU_UTIL_THRESHOLD</code></td><td><code>15</code></td><td>GPU utilization (%) above which the PC counts as busy; <code>0</code> disables the GPU check</td></tr>
+        <tr><td><code>IDLE_CONSECUTIVE_CHECKS</code></td><td><code>2</code></td><td>Consecutive idle strikes required before shutdown</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Gaming PC Setup -->
+  <section id="pc-setup">
+    <h2>Gaming PC Setup</h2>
+    <p>Two PowerShell installers in <code>agent/</code> prepare the Windows gaming PC. Both must run from an
+      elevated (Administrator) prompt.</p>
+
+    <h3>Shutdown agent — <code>install.ps1</code></h3>
+    <p>
+      Registers the <code>pc-broker-agent</code> scheduled task (runs as SYSTEM at startup) listening on
+      port <code>8001</code>. It provides the shutdown endpoint, doubles as the broker's reachability
+      probe target, and — from agent v0.2 — exposes <code>/activity</code> (per-session input idle + GPU
+      utilization) via the <code>pc-broker-idle-reporter</code> logon task for idle auto-shutdown.
+      Re-running the installer stops the task and kills any lingering agent process before re-registering,
+      so upgrades never leave a stale listener bound to the port.
+    </p>
+    <pre><code>./install.ps1 -Token &lt;SHUTDOWN_AGENT_TOKEN&gt;</code></pre>
+
+    <h3>Headless Ollama — <code>install-ollama.ps1</code></h3>
+    <p>
+      The standard Ollama installer registers a per-user login app, which is useless on a machine that
+      gets woken remotely and never logged into. This script runs <code>ollama serve</code> as a SYSTEM
+      scheduled task at startup, moves the model store to a shared directory, and opens the firewall port
+      <strong>only</strong> to the hosts that need it — Ollama's API has no auth and includes destructive
+      endpoints, so it must not be reachable from the whole LAN.
+    </p>
+    <pre><code>./install-ollama.ps1 -AllowFrom 192.168.1.163 `
+  -Models qwen3.5:9b,qwen3.5:4b,gemma4:e4b-it-qat</code></pre>
+    <div class="alert alert-blue">
+      💡 Also disable Windows Fast Startup (<code>HiberbootEnabled=0</code>) and give the PC a static DHCP
+      reservation — Wake-on-LAN is unreliable without both.
+    </div>
+  </section>
+
+  <!-- Model Selection -->
+  <section id="models">
+    <h2>Model Selection</h2>
+    <p>
+      The reference PC runs an <strong>RTX 3070 (8 GB VRAM)</strong> with <strong>16 GB system RAM</strong>.
+      Benchmarks on that hardware produced one rule that dominates every other consideration:
+    </p>
+    <div class="alert alert-yellow">
+      ⚠️ <strong>A model must fit 100% in VRAM.</strong> Anything that spills to CPU also has to fit in
+      system RAM, and with 16 GB it doesn't — it pages to disk and throughput collapses (a 23 GB 27B model
+      benched at <strong>4.7 tok/s</strong> vs 64–95 tok/s for fully GPU-resident models). Budget:
+      quantized model file + KV cache + ~0.5 GB CUDA overhead ≤ ~7.5 GB. Verify with
+      <code>ollama ps</code> — it should say <em>100% GPU</em>.
+    </div>
+
+    <h3>Current lineup (benchmarked 2026-07)</h3>
+    <table>
+      <thead><tr><th>Model</th><th>Size</th><th>Speed</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>qwen3.5:9b</code></td><td>6.6 GB</td><td>64 tok/s</td><td>Research / general / code — thinking mode, vision, tools</td></tr>
+        <tr><td><code>qwen3.5:4b</code></td><td>3.4 GB</td><td>95 tok/s</td><td>Fast responses; enough VRAM headroom for 32K+ context</td></tr>
+        <tr><td><code>gemma4:e4b-it-qat</code></td><td>6.1 GB</td><td>83 tok/s</td><td>Assistant / agents — native tool calling, vision, audio</td></tr>
+        <tr><td><code>qwen3-embedding:0.6b</code></td><td>639 MB</td><td>—</td><td>Embeddings for RAG / semantic search (1024-dim)</td></tr>
+        <tr><td><code>embeddinggemma</code></td><td>621 MB</td><td>—</td><td>Smaller embeddings alternative (768-dim)</td></tr>
+      </tbody>
+    </table>
+    <p>All chat models load cold from NVMe in 7–9 s, fully GPU-resident.</p>
+
+    <h3>Ruled out on this hardware</h3>
+    <table>
+      <thead><tr><th>Model</th><th>Why not</th></tr></thead>
+      <tbody>
+        <tr><td><code>gemma4:12b</code></td><td>7.2–7.6 GB file leaves no room for KV cache — spills</td></tr>
+        <tr><td><code>qwen3.6:27b</code>, <code>laguna-xs.2</code>, <code>glm-4.7-flash</code>, <code>qwen3-coder:30b</code></td>
+            <td>20 GB+ footprints. MoE "3B active" helps compute, not memory — all 30B+ weights must fit in VRAM + RAM, and 16 GB RAM can't absorb the spill. Viable only after a RAM upgrade to 32 GB+</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Ollama tuning for 8 GB (machine-level env vars on the PC)</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Value</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>OLLAMA_FLASH_ATTENTION</code></td><td><code>1</code></td><td>Faster attention, lower memory</td></tr>
+        <tr><td><code>OLLAMA_KV_CACHE_TYPE</code></td><td><code>q8_0</code></td><td>Halves KV-cache memory with negligible quality loss — buys context length</td></tr>
+        <tr><td><code>OLLAMA_MAX_LOADED_MODELS</code></td><td><code>2</code></td><td>Chat model + tiny embedder coexist; anything more fights over 8 GB</td></tr>
+        <tr><td><code>OLLAMA_KEEP_ALIVE</code></td><td><code>30m</code></td><td>Set by <code>install-ollama.ps1</code>; avoids reload between chats</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Context length is the other half of the VRAM budget: Ollama defaults to a small <code>num_ctx</code>,
+      and the broker caps per-request <code>num_ctx</code> at 16384. Prefer the 4B model when you actually
+      need long context — the 9B's weights leave little VRAM for KV cache.
+    </p>
   </section>
 
   <!-- Kubernetes -->
@@ -716,21 +907,20 @@ pytest tests/ -v</code></pre>
     <h2>Kubernetes Deployment</h2>
     <p>
       Manifests live in the <a href="https://github.com/matthewshan/k3s-homelab" target="_blank">k3s-homelab</a> repo
-      under <code>applications/llm-pc-broker/</code>. They are picked up automatically by the ArgoCD
-      <code>applications</code> ApplicationSet.
+      under <code>applications/pc-broker/</code> and are deployed by ArgoCD. The pod runs with
+      <code>hostNetwork: true</code> — the WoL UDP broadcast never leaves the CNI overlay otherwise, so the
+      broker must broadcast from the node's LAN interface (node and PC on the same L2 segment).
     </p>
-    <h3>Required Secret</h3>
-    <p>Create the secret out-of-band (not stored in Git):</p>
-    <pre><code>kubectl create secret generic llm-pc-broker-secrets \
-  --namespace llm-pc-broker \
-  --from-literal=PC_MAC='aa:bb:cc:dd:ee:ff' \
-  --from-literal=API_TOKEN='changeme' \
-  --from-literal=SHUTDOWN_AGENT_TOKEN=''</code></pre>
-
+    <h3>Secrets</h3>
+    <p>
+      Secrets (<code>PC_MAC</code>, <code>API_TOKEN</code>, <code>SHUTDOWN_AGENT_TOKEN</code>) are synced
+      by External Secrets Operator from Infisical into the <code>pc-broker-secrets</code> Secret — nothing
+      secret is stored in Git.
+    </p>
     <h3>Container Images</h3>
-    <p>Multi-arch images published on every GitHub release tag:</p>
-    <pre><code>ghcr.io/matthewshan/llm-pc-broker:latest
-ghcr.io/matthewshan/llm-pc-broker:v1.0.0</code></pre>
+    <p>Multi-arch (amd64/arm64) images are published by CI on every <code>v*.*.*</code> tag:</p>
+    <pre><code>ghcr.io/matthewshan/pc-broker:latest
+ghcr.io/matthewshan/pc-broker:0.2.0</code></pre>
   </section>
 
   <!-- Security -->
@@ -743,10 +933,10 @@ ghcr.io/matthewshan/llm-pc-broker:v1.0.0</code></pre>
       <thead><tr><th>Concern</th><th>Mitigation</th></tr></thead>
       <tbody>
         <tr><td>External exposure</td><td>Internal gateway + Twingate only</td></tr>
-        <tr><td>Programmatic API access</td><td>Set <code>API_TOKEN</code> env var</td></tr>
-        <tr><td>Shutdown endpoint</td><td>Most sensitive — consider additional gateway-level auth</td></tr>
-        <tr><td>Secrets in Git</td><td>Kubernetes Secrets managed out-of-band, not in ConfigMaps</td></tr>
-        <tr><td>Ollama direct exposure</td><td>Only broker needs LAN access to Ollama port</td></tr>
+        <tr><td>Shutdown endpoint</td><td>Most sensitive — when <code>API_TOKEN</code> is set, <code>/api/power/off</code> requires a Bearer token on top of network-level access control</td></tr>
+        <tr><td>Ollama resource abuse</td><td>Chat options are whitelisted and capped (<code>num_ctx</code> ≤ 16384, <code>num_predict</code> ≤ 8192) so a request can't exhaust the PC's VRAM/RAM; request bodies are capped at 1 MB</td></tr>
+        <tr><td>Ollama direct exposure</td><td>Its API has no auth and includes destructive endpoints — <code>install-ollama.ps1</code> scopes the firewall rule to the broker's host only, never the whole LAN</td></tr>
+        <tr><td>Secrets in Git</td><td>Synced from Infisical via External Secrets Operator, never committed</td></tr>
       </tbody>
     </table>
   </section>
@@ -820,12 +1010,12 @@ async function tryPost(path, payload, resultId) {
 }
 
 async function tryChatRequest() {
-  const model   = document.getElementById('chat-model').value || 'llama3';
+  const model   = document.getElementById('chat-model').value || 'qwen3.5:9b';
   const content = document.getElementById('chat-message').value || 'Hello!';
+  // Response is streamed NDJSON; tryPost's JSON parse fails over to raw text.
   await tryPost('/api/llm/chat', {
     model,
     messages: [{ role: 'user', content }],
-    stream: false,
   }, 'r-chat');
 }
 
