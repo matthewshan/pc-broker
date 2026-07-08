@@ -22,8 +22,8 @@ Configuration (environment variables):
 Endpoints:
     GET  /health     -> 200 {"status": "ok"}        (no auth)
     GET  /activity   -> 200 user-activity report     (auth required)
-    POST /shutdown   -> 202, then `shutdown /s /t 0` (auth required)
-    POST /restart    -> 202, then `shutdown /r /t 0` (auth required)
+    POST /shutdown   -> 202, then `shutdown /s /t 0 /f` (auth required)
+    POST /restart    -> 202, then `shutdown /r /t 0 /f` (auth required)
 
 The /activity report feeds the broker's idle auto-shutdown. This agent only
 REPORTS raw facts; the broker applies thresholds and decides. Contract: any
@@ -72,7 +72,10 @@ def _run_shutdown(restart: bool = False) -> None:
     stays on. Used to validate the end-to-end path before arming the agent.
     """
     flag = "/r" if restart else "/s"
-    cmd = ["shutdown", flag, "/t", "0"]
+    # /f is required: with /t 0 Windows does NOT imply force, so any app in an
+    # active session can veto the shutdown — it then hangs pending forever
+    # while the broker has already reported success.
+    cmd = ["shutdown", flag, "/t", "0", "/f"]
     if DRY_RUN:
         logger.warning("DRY RUN: would execute: %s (machine NOT affected)", " ".join(cmd))
         return
