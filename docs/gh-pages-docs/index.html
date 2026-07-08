@@ -312,6 +312,7 @@
 
     <li class="nav-section">Deployment</li>
     <li><a href="#pc-setup">Gaming PC Setup</a></li>
+    <li><a href="#models">Model Selection</a></li>
     <li><a href="#kubernetes">Kubernetes</a></li>
     <li><a href="#security">Security</a></li>
   </ul>
@@ -844,6 +845,61 @@ pytest tests/ -v</code></pre>
       💡 Also disable Windows Fast Startup (<code>HiberbootEnabled=0</code>) and give the PC a static DHCP
       reservation — Wake-on-LAN is unreliable without both.
     </div>
+  </section>
+
+  <!-- Model Selection -->
+  <section id="models">
+    <h2>Model Selection</h2>
+    <p>
+      The reference PC runs an <strong>RTX 3070 (8 GB VRAM)</strong> with <strong>16 GB system RAM</strong>.
+      Benchmarks on that hardware produced one rule that dominates every other consideration:
+    </p>
+    <div class="alert alert-yellow">
+      ⚠️ <strong>A model must fit 100% in VRAM.</strong> Anything that spills to CPU also has to fit in
+      system RAM, and with 16 GB it doesn't — it pages to disk and throughput collapses (a 23 GB 27B model
+      benched at <strong>4.7 tok/s</strong> vs 64–95 tok/s for fully GPU-resident models). Budget:
+      quantized model file + KV cache + ~0.5 GB CUDA overhead ≤ ~7.5 GB. Verify with
+      <code>ollama ps</code> — it should say <em>100% GPU</em>.
+    </div>
+
+    <h3>Current lineup (benchmarked 2026-07)</h3>
+    <table>
+      <thead><tr><th>Model</th><th>Size</th><th>Speed</th><th>Role</th></tr></thead>
+      <tbody>
+        <tr><td><code>qwen3.5:9b</code></td><td>6.6 GB</td><td>64 tok/s</td><td>Research / general / code — thinking mode, vision, tools</td></tr>
+        <tr><td><code>qwen3.5:4b</code></td><td>3.4 GB</td><td>95 tok/s</td><td>Fast responses; enough VRAM headroom for 32K+ context</td></tr>
+        <tr><td><code>gemma4:e4b-it-qat</code></td><td>6.1 GB</td><td>83 tok/s</td><td>Assistant / agents — native tool calling, vision, audio</td></tr>
+        <tr><td><code>qwen3-embedding:0.6b</code></td><td>639 MB</td><td>—</td><td>Embeddings for RAG / semantic search (1024-dim)</td></tr>
+        <tr><td><code>embeddinggemma</code></td><td>621 MB</td><td>—</td><td>Smaller embeddings alternative (768-dim)</td></tr>
+      </tbody>
+    </table>
+    <p>All chat models load cold from NVMe in 7–9 s, fully GPU-resident.</p>
+
+    <h3>Ruled out on this hardware</h3>
+    <table>
+      <thead><tr><th>Model</th><th>Why not</th></tr></thead>
+      <tbody>
+        <tr><td><code>gemma4:12b</code></td><td>7.2–7.6 GB file leaves no room for KV cache — spills</td></tr>
+        <tr><td><code>qwen3.6:27b</code>, <code>laguna-xs.2</code>, <code>glm-4.7-flash</code>, <code>qwen3-coder:30b</code></td>
+            <td>20 GB+ footprints. MoE "3B active" helps compute, not memory — all 30B+ weights must fit in VRAM + RAM, and 16 GB RAM can't absorb the spill. Viable only after a RAM upgrade to 32 GB+</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Ollama tuning for 8 GB (machine-level env vars on the PC)</h3>
+    <table>
+      <thead><tr><th>Variable</th><th>Value</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>OLLAMA_FLASH_ATTENTION</code></td><td><code>1</code></td><td>Faster attention, lower memory</td></tr>
+        <tr><td><code>OLLAMA_KV_CACHE_TYPE</code></td><td><code>q8_0</code></td><td>Halves KV-cache memory with negligible quality loss — buys context length</td></tr>
+        <tr><td><code>OLLAMA_MAX_LOADED_MODELS</code></td><td><code>2</code></td><td>Chat model + tiny embedder coexist; anything more fights over 8 GB</td></tr>
+        <tr><td><code>OLLAMA_KEEP_ALIVE</code></td><td><code>30m</code></td><td>Set by <code>install-ollama.ps1</code>; avoids reload between chats</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Context length is the other half of the VRAM budget: Ollama defaults to a small <code>num_ctx</code>,
+      and the broker caps per-request <code>num_ctx</code> at 16384. Prefer the 4B model when you actually
+      need long context — the 9B's weights leave little VRAM for KV cache.
+    </p>
   </section>
 
   <!-- Kubernetes -->
