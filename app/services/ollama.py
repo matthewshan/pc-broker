@@ -33,6 +33,19 @@ async def list_models() -> list[dict[str, Any]]:
         ]
 
 
+async def chat(payload: dict[str, Any]) -> dict[str, Any]:
+    """Non-streaming chat request to Ollama; returns its single JSON body.
+
+    Same read=None rationale as chat_stream: a cold model load can sit for
+    30-90s before Ollama answers.
+    """
+    timeout = httpx.Timeout(connect=5.0, read=None, write=10.0, pool=5.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(f"{settings.ollama_base_url}/api/chat", json=payload)
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def chat_stream(payload: dict[str, Any]) -> AsyncIterator[bytes]:
     """Proxy a chat request to Ollama, yielding raw NDJSON chunks.
 
