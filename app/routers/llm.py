@@ -6,13 +6,14 @@ to show the wake prompt instead of a chat error.
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, AsyncIterator, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app import events as event_log
 from app.services import ollama as ollama_svc
@@ -155,15 +156,24 @@ async def llm_chat(req: ChatRequest):
 
 
 @router.post("/api/chat")
-async def ollama_chat_alias(req: OllamaChatRequest):
+async def ollama_chat_alias(request: Request):
     """Ollama-compatible alias of the chat proxy.
 
     LiteLLM's `ollama_chat/` provider (and most Ollama clients) POST to
     `{base}/api/chat`, so this route lets agents point `OLLAMA_API_BASE` at
     the broker unchanged. Unlike /api/llm/chat it honors `stream: false`
     (single JSON body) and passes `tools`/`format`/`keep_alive` through.
+
+    Body is parsed from raw bytes instead of a typed parameter: Ollama
+    ignores Content-Type, and real clients rely on that — LiteLLM's async
+    path posts `application/octet-stream`, which FastAPI's typed body
+    param would reject with a 422.
     """
     _require_ready()
+    try:
+        req = OllamaChatRequest.model_validate(json.loads(await request.body()))
+    except (json.JSONDecodeError, UnicodeDecodeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid chat request: {exc}") from exc
     payload = req.model_dump(exclude_none=True)
     if "options" in payload:
         payload["options"] = _sanitize_options(payload["options"])

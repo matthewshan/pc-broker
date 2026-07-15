@@ -30,7 +30,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="PC Broker",
         description="Internal service to wake and shut down a gaming PC over the LAN.",
-        version="0.3.0",
+        version="0.3.1",
         lifespan=lifespan,
     )
 
