@@ -192,6 +192,50 @@ async def test_ollama_alias_non_streaming(client):
         broker_state.state = original
 
 
+async def test_ollama_alias_accepts_octet_stream_content_type(client):
+    """LiteLLM's async path posts application/octet-stream; Ollama ignores
+    Content-Type, so the alias must too (a typed FastAPI body param 422s)."""
+    original = broker_state.state
+    broker_state.state = State.ready
+    body = {"message": {"role": "assistant", "content": "Hello"}, "done": True}
+
+    async def fake_chat(payload):
+        assert payload["model"] == "qwen3:8b"
+        return body
+
+    try:
+        with patch("app.services.ollama.chat", new=fake_chat):
+            resp = await client.post(
+                "/api/chat",
+                content=json.dumps(
+                    {
+                        "model": "qwen3:8b",
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "stream": False,
+                    }
+                ).encode(),
+                headers={"Content-Type": "application/octet-stream"},
+            )
+        assert resp.status_code == 200
+        assert resp.json() == body
+    finally:
+        broker_state.state = original
+
+
+async def test_ollama_alias_rejects_malformed_body(client):
+    original = broker_state.state
+    broker_state.state = State.ready
+    try:
+        resp = await client.post(
+            "/api/chat",
+            content=b"not json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 422
+    finally:
+        broker_state.state = original
+
+
 async def test_ollama_alias_sanitizes_options(client):
     """The alias applies the same options whitelist/caps as /api/llm/chat."""
     original = broker_state.state
