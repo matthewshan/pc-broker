@@ -47,7 +47,7 @@ class Settings(BaseSettings):
         return self.ollama_url or f"http://{self.pc_host}:{self.ollama_port}"
 
     # Misc
-    broker_version: str = "0.2.0"
+    broker_version: str = "0.3.0"
 
 
 settings = Settings()

@@ -117,6 +117,106 @@ async def test_sanitize_options_whitelist_and_caps():
     assert clean == {"temperature": 0.7, "num_ctx": 16384, "num_predict": 8192}
 
 
+async def test_ollama_alias_not_ready(client):
+    """The /api/chat alias should 503 exactly like /api/llm/chat."""
+    original = broker_state.state
+    broker_state.state = State.offline
+    try:
+        resp = await client.post(
+            "/api/chat",
+            json={"model": "qwen3:8b", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert resp.status_code == 503
+        assert resp.json()["detail"]["state"] == "offline"
+    finally:
+        broker_state.state = original
+
+
+async def test_ollama_alias_streams_and_passes_tools(client):
+    """Streaming alias must forward tools and raw messages (tool_calls intact)."""
+    original = broker_state.state
+    broker_state.state = State.ready
+    tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
+    messages = [
+        {"role": "user", "content": "weather?"},
+        {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "get_weather", "arguments": {}}}]},
+        {"role": "tool", "content": "sunny"},
+    ]
+    lines = [{"message": {"role": "assistant", "content": "Sunny."}, "done": True}]
+
+    async def fake_stream(payload):
+        assert payload["stream"] is True
+        assert payload["tools"] == tools
+        assert payload["messages"] == messages
+        for line in lines:
+            yield (json.dumps(line) + "\n").encode()
+
+    try:
+        with patch("app.services.ollama.chat_stream", new=fake_stream):
+            resp = await client.post(
+                "/api/chat",
+                json={"model": "qwen3:8b", "messages": messages, "tools": tools},
+            )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/x-ndjson")
+        received = [json.loads(l) for l in resp.text.strip().split("\n")]
+        assert received == lines
+    finally:
+        broker_state.state = original
+
+
+async def test_ollama_alias_non_streaming(client):
+    """stream=false must return Ollama's single JSON body, not NDJSON."""
+    original = broker_state.state
+    broker_state.state = State.ready
+    body = {"message": {"role": "assistant", "content": "Hello"}, "done": True}
+
+    async def fake_chat(payload):
+        assert payload["stream"] is False
+        return body
+
+    try:
+        with patch("app.services.ollama.chat", new=fake_chat):
+            resp = await client.post(
+                "/api/chat",
+                json={
+                    "model": "qwen3:8b",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                },
+            )
+        assert resp.status_code == 200
+        assert resp.json() == body
+        assert broker_state.active_llm_streams == 0
+    finally:
+        broker_state.state = original
+
+
+async def test_ollama_alias_sanitizes_options(client):
+    """The alias applies the same options whitelist/caps as /api/llm/chat."""
+    original = broker_state.state
+    broker_state.state = State.ready
+
+    async def fake_chat(payload):
+        assert payload["options"] == {"num_ctx": 16384}
+        return {"done": True}
+
+    try:
+        with patch("app.services.ollama.chat", new=fake_chat):
+            resp = await client.post(
+                "/api/chat",
+                json={
+                    "model": "qwen3:8b",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": False,
+                    "options": {"num_ctx": 999999, "num_gpu": 4},
+                },
+            )
+        assert resp.status_code == 200
+    finally:
+        broker_state.state = original
+
+
 async def test_request_body_size_cap(client):
     resp = await client.post(
         "/api/llm/chat",

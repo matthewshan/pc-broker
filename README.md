@@ -19,6 +19,7 @@ Phone / browser (on Twingate)
   ├─ POST /api/power/on    ← Wake-on-LAN magic packet (UDP broadcast)
   ├─ POST /api/power/off   ← graceful shutdown via the agent on the PC
   ├─ POST /api/llm/chat    ← streaming chat proxy to Ollama on the PC
+  ├─ POST /api/chat        ← Ollama-compatible alias (LiteLLM & co. point here)
   ├─ GET  /api/events      ← recent operational events
   └─ GET  /                ← built-in status + power + chat UI
         │
@@ -92,6 +93,7 @@ installed with `-DryRun`).
 | `GET` | `/api/llm/health` | Live Ollama reachability + broker state |
 | `GET` | `/api/llm/models` | Available Ollama models (`503` unless `ready`) |
 | `POST` | `/api/llm/chat` | Streaming NDJSON chat proxy to Ollama (`503` unless `ready`) |
+| `POST` | `/api/chat` | Ollama-compatible alias of the chat proxy — passes `tools`/`format` through and honors `stream: false`, so `OLLAMA_API_BASE` can point at the broker (`503` unless `ready`) |
 | `POST` | `/api/idle/keep_awake` | `{"enabled": bool}` — pause/resume idle auto-shutdown |
 | `GET` | `/api/events?limit=50` | Recent operational events |
 | `GET` | `/healthz` | Liveness |
