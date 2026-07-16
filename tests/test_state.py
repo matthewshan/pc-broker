@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.config import settings
 from app.state import BrokerState, State
 
 pytestmark = pytest.mark.asyncio
@@ -69,3 +70,34 @@ async def test_timeout_recovers_when_pc_comes_up():
     state.state = State.timeout
     await _refresh(state, pc_up=True, ollama_up=True, models=[{"name": "qwen3:8b"}])
     assert state.state is State.ready
+
+
+async def test_waking_resends_wol_after_interval(monkeypatch):
+    """One lost magic packet must not sink the wake — resend while waking."""
+    monkeypatch.setattr(settings, "pc_mac", "aa:bb:cc:dd:ee:ff")
+    state = BrokerState()
+    with patch("app.services.wol.send_magic_packet", new_callable=AsyncMock) as wol:
+        await state.request_wake()
+        assert wol.await_count == 1
+
+        # Within the resend interval: poll must NOT resend.
+        await _refresh(state, pc_up=False, ollama_up=False)
+        assert wol.await_count == 1
+
+        # Pretend the interval elapsed: poll resends exactly once per interval.
+        state._last_wol_sent_at -= settings.wol_resend_interval + 1
+        await _refresh(state, pc_up=False, ollama_up=False)
+        assert wol.await_count == 2
+        await _refresh(state, pc_up=False, ollama_up=False)
+        assert wol.await_count == 2
+
+
+async def test_no_wol_resend_once_pc_up(monkeypatch):
+    monkeypatch.setattr(settings, "pc_mac", "aa:bb:cc:dd:ee:ff")
+    state = BrokerState()
+    with patch("app.services.wol.send_magic_packet", new_callable=AsyncMock) as wol:
+        await state.request_wake()
+        state._last_wol_sent_at -= settings.wol_resend_interval + 1
+        await _refresh(state, pc_up=True, ollama_up=True, models=[{"name": "m"}])
+        assert wol.await_count == 1
+        assert state.state is State.ready
