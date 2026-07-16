@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     # Timeouts (seconds)
     host_reachability_timeout: int = 300
     poll_interval: float = 5.0
+    # WoL is fire-and-forget UDP broadcast; one lost packet must not sink a
+    # wake cycle. While `waking`, the poll loop re-sends the magic packet at
+    # this interval until the PC responds or the wake times out.
+    wol_resend_interval: float = 30.0
 
     # Auth
     api_token: str = ""
@@ -47,7 +51,7 @@ class Settings(BaseSettings):
         return self.ollama_url or f"http://{self.pc_host}:{self.ollama_port}"
 
     # Misc
-    broker_version: str = "0.3.1"
+    broker_version: str = "0.3.2"
 
 
 settings = Settings()

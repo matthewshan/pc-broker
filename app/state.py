@@ -56,6 +56,7 @@ class BrokerState:
         self._wake_requested_at: Optional[float] = None
         self._models_refreshed_at: Optional[float] = None
         self.last_llm_activity: Optional[float] = None  # time.monotonic()
+        self._last_wol_sent_at: Optional[float] = None  # time.monotonic()
         self.active_llm_streams: int = 0
         self.keep_awake: bool = False
         self.ready_since: Optional[float] = None  # time.monotonic()
@@ -139,6 +140,27 @@ class BrokerState:
                     f"State changed from {previous.value} to {self.state.value}",
                 )
                 logger.info("State: %s -> %s", previous.value, self.state.value)
+
+            # WoL is a single UDP broadcast — re-send while still waking so one
+            # lost packet doesn't sink the whole wake cycle (2026-07-16 outage).
+            resend_wol = (
+                self.state is State.waking
+                and not pc_up
+                and bool(settings.pc_mac)
+                and (
+                    self._last_wol_sent_at is None
+                    or time.monotonic() - self._last_wol_sent_at
+                    >= settings.wol_resend_interval
+                )
+            )
+            if resend_wol:
+                self._last_wol_sent_at = time.monotonic()
+
+        if resend_wol:
+            logger.info(
+                "Re-sending Wake-on-LAN to %s (still waking)", settings.pc_mac
+            )
+            await wol_svc.send_magic_packet(settings.pc_mac, settings.pc_broadcast)
 
     async def _idle_tick(self) -> None:
         """Evaluate idle auto-shutdown once per activity-poll interval."""
@@ -239,6 +261,7 @@ class BrokerState:
             if self.state in (State.host_up, State.ollama_starting, State.ready, State.waking):
                 return
             self.state = State.waking
+            self._last_wol_sent_at = time.monotonic()
 
         event_log.add_event("wake_request", "Wake-on-LAN request initiated")
         logger.info("Sending Wake-on-LAN to %s (broadcast %s)", settings.pc_mac, settings.pc_broadcast)
