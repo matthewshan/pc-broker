@@ -101,3 +101,77 @@ async def test_no_wol_resend_once_pc_up(monkeypatch):
         await _refresh(state, pc_up=True, ollama_up=True, models=[{"name": "m"}])
         assert wol.await_count == 1
         assert state.state is State.ready
+
+
+# ── Keep-awake TTL (bug-053) ─────────────────────────────────────────────
+
+
+async def test_set_keep_awake_default_ttl(monkeypatch):
+    monkeypatch.setattr(settings, "keep_awake_default_minutes", 120)
+    monkeypatch.setattr(settings, "keep_awake_max_minutes", 240)
+    state = BrokerState()
+    state.set_keep_awake(True)
+    assert state.keep_awake_active() is True
+    remaining = state.keep_awake_remaining_seconds()
+    assert remaining is not None and 120 * 60 - 5 < remaining <= 120 * 60
+
+
+async def test_set_keep_awake_caps_unbounded_ttl(monkeypatch):
+    monkeypatch.setattr(settings, "keep_awake_max_minutes", 240)
+    state = BrokerState()
+    state.set_keep_awake(True, ttl_minutes=999_999)
+    remaining = state.keep_awake_remaining_seconds()
+    assert remaining is not None and remaining <= 240 * 60
+
+
+async def test_set_keep_awake_disable_clears():
+    state = BrokerState()
+    state.set_keep_awake(True, ttl_minutes=60)
+    state.set_keep_awake(False)
+    assert state.keep_awake_until is None
+    assert state.keep_awake_active() is False
+    assert state.keep_awake_remaining_seconds() is None
+
+
+async def test_keep_awake_auto_expires():
+    """A deadline in the past reads as off even though the field is set."""
+    import time
+
+    state = BrokerState()
+    state.keep_awake_until = time.monotonic() - 1
+    assert state.keep_awake_active() is False
+    assert state.keep_awake_remaining_seconds() is None
+
+
+async def test_keep_awake_resets_idle_strikes():
+    state = BrokerState()
+    state.idle_strikes = 3
+    state.set_keep_awake(True)
+    assert state.idle_strikes == 0
+
+
+async def test_leaving_ready_clears_keep_awake():
+    """Keep-awake must not survive the PC dropping out of ready (bug-053)."""
+    state = BrokerState()
+    await _refresh(state, pc_up=True, ollama_up=True, models=[{"name": "m"}])
+    assert state.state is State.ready
+    state.set_keep_awake(True)
+    assert state.keep_awake_active() is True
+
+    await _refresh(state, pc_up=False, ollama_up=False)
+    assert state.state is State.offline
+    assert state.keep_awake_until is None
+
+
+async def test_idle_status_surfaces_keep_awake(monkeypatch):
+    monkeypatch.setattr(settings, "keep_awake_default_minutes", 120)
+    monkeypatch.setattr(settings, "keep_awake_max_minutes", 240)
+    state = BrokerState()
+    status = state.idle_status()
+    assert status["keep_awake"] is False
+    assert status["keep_awake_remaining_seconds"] is None
+
+    state.set_keep_awake(True)
+    status = state.idle_status()
+    assert status["keep_awake"] is True
+    assert status["keep_awake_remaining_seconds"] is not None

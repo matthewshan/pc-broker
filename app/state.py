@@ -58,7 +58,10 @@ class BrokerState:
         self.last_llm_activity: Optional[float] = None  # time.monotonic()
         self._last_wol_sent_at: Optional[float] = None  # time.monotonic()
         self.active_llm_streams: int = 0
-        self.keep_awake: bool = False
+        # Monotonic deadline past which keep-awake has expired; None = off.
+        # Bounded (see set_keep_awake) so a stray toggle cannot latch the PC on
+        # forever the way the old sticky `keep_awake` bool did (bug-053).
+        self.keep_awake_until: Optional[float] = None
         self.ready_since: Optional[float] = None  # time.monotonic()
         self.last_idle_shutdown: Optional[str] = None
         self.idle_strikes: int = 0
@@ -135,6 +138,9 @@ class BrokerState:
                 elif previous is State.ready:
                     self.ready_since = None
                     self.idle_strikes = 0
+                    # Keep-awake only means anything while ready; drop it on the
+                    # way out so it can't carry into the next wake cycle.
+                    self.keep_awake_until = None
                 event_log.add_event(
                     "state_change",
                     f"State changed from {previous.value} to {self.state.value}",
@@ -184,7 +190,7 @@ class BrokerState:
         is_idle, reason = idle_svc.should_idle_shutdown(
             now=time.monotonic(),
             state_value=self.state.value,
-            keep_awake=self.keep_awake,
+            keep_awake_until=self.keep_awake_until,
             active_streams=self.active_llm_streams,
             ready_since=self.ready_since,
             last_llm_activity=self.last_llm_activity,
@@ -228,11 +234,42 @@ class BrokerState:
         )
         return time.monotonic() - reference
 
+    def set_keep_awake(self, enabled: bool, ttl_minutes: Optional[float] = None) -> None:
+        """Pause idle auto-shutdown for a bounded window, or clear the pause.
+
+        Enabling without a duration uses ``keep_awake_default_minutes``; any
+        requested duration is clamped to ``keep_awake_max_minutes`` so a single
+        toggle can never wedge the PC on indefinitely (bug-053).
+        """
+        if not enabled:
+            self.keep_awake_until = None
+        else:
+            requested = (
+                ttl_minutes
+                if ttl_minutes is not None and ttl_minutes > 0
+                else settings.keep_awake_default_minutes
+            )
+            capped = min(requested, settings.keep_awake_max_minutes)
+            self.keep_awake_until = time.monotonic() + capped * 60
+        self.idle_strikes = 0
+
+    def keep_awake_active(self) -> bool:
+        """True only while keep-awake is set and not yet expired."""
+        return self.keep_awake_until is not None and time.monotonic() < self.keep_awake_until
+
+    def keep_awake_remaining_seconds(self) -> Optional[float]:
+        """Seconds left on keep-awake, or None if off/expired."""
+        if self.keep_awake_until is None:
+            return None
+        remaining = self.keep_awake_until - time.monotonic()
+        return remaining if remaining > 0 else None
+
     def idle_status(self) -> dict[str, Any]:
         report = self._activity_report or {}
         return {
             "enabled": settings.idle_shutdown_enabled,
-            "keep_awake": self.keep_awake,
+            "keep_awake": self.keep_awake_active(),
+            "keep_awake_remaining_seconds": self.keep_awake_remaining_seconds(),
             "active_streams": self.active_llm_streams,
             "strikes": self.idle_strikes,
             "shutdown_after_minutes": settings.idle_shutdown_minutes,

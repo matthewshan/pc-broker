@@ -31,7 +31,7 @@ def should_idle_shutdown(
     *,
     now: float,
     state_value: str,
-    keep_awake: bool,
+    keep_awake_until: Optional[float],
     active_streams: int,
     ready_since: Optional[float],
     last_llm_activity: Optional[float],
@@ -45,7 +45,7 @@ def should_idle_shutdown(
         return False, "idle shutdown disabled"
     if state_value != "ready":
         return False, f"state is {state_value}, not ready"
-    if keep_awake:
+    if keep_awake_until is not None and now < keep_awake_until:
         return False, "keep-awake is on"
     if active_streams > 0:
         return False, f"{active_streams} LLM stream(s) in flight"

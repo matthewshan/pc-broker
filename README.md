@@ -75,6 +75,8 @@ Open http://localhost:8000 for the UI; OpenAPI docs at http://localhost:8000/doc
 | `IDLE_ACTIVITY_POLL_INTERVAL` | `60` | Seconds between agent `/activity` polls |
 | `IDLE_GPU_UTIL_THRESHOLD` | `15` | GPU % above which the PC counts as in use (`0` disables) |
 | `IDLE_CONSECUTIVE_CHECKS` | `2` | Idle verdicts in a row required before shutdown |
+| `KEEP_AWAKE_DEFAULT_MINUTES` | `120` | How long a keep-awake pause lasts when no duration is given |
+| `KEEP_AWAKE_MAX_MINUTES` | `240` | Hard cap on a keep-awake pause — a stray toggle can't latch the PC on forever |
 
 In the homelab deployment these are set on the Deployment in the `k3s-homelab`
 repo (`applications/pc-broker/`) — non-secret values as plain env, secrets via
@@ -94,7 +96,7 @@ installed with `-DryRun`).
 | `GET` | `/api/llm/models` | Available Ollama models (`503` unless `ready`) |
 | `POST` | `/api/llm/chat` | Streaming NDJSON chat proxy to Ollama (`503` unless `ready`) |
 | `POST` | `/api/chat` | Ollama-compatible alias of the chat proxy — passes `tools`/`format` through and honors `stream: false`, so `OLLAMA_API_BASE` can point at the broker (`503` unless `ready`) |
-| `POST` | `/api/idle/keep_awake` | `{"enabled": bool}` — pause/resume idle auto-shutdown |
+| `POST` | `/api/idle/keep_awake` | `{"enabled": bool, "ttl_minutes"?: number}` — pause/resume idle auto-shutdown. The pause self-expires after `ttl_minutes` (default `KEEP_AWAKE_DEFAULT_MINUTES`, clamped to `KEEP_AWAKE_MAX_MINUTES`) |
 | `GET` | `/api/events?limit=50` | Recent operational events |
 | `GET` | `/healthz` | Liveness |
 | `GET` | `/readyz` | Readiness (process up; no PC dependency) |

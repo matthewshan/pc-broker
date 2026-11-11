@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     idle_activity_poll_interval: float = 60.0
     idle_gpu_util_threshold: int = 15
     idle_consecutive_checks: int = 2
+    # Keep-awake is a bounded pause on idle auto-shutdown, not a sticky latch:
+    # enabling it without a duration lasts keep_awake_default_minutes, and any
+    # requested duration is clamped to keep_awake_max_minutes so a stray toggle
+    # can never wedge the PC on indefinitely (bug-053).
+    keep_awake_default_minutes: int = 120
+    keep_awake_max_minutes: int = 240
 
     @property
     def ollama_base_url(self) -> str:
