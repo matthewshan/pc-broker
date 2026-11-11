@@ -478,6 +478,7 @@ pytest tests/ -v</code></pre>
   "idle": {
     "enabled": false,
     "keep_awake": false,
+    "keep_awake_remaining_seconds": null,
     "active_streams": 0,
     "strikes": 0,
     "shutdown_after_minutes": 30,
@@ -678,11 +679,12 @@ pytest tests/ -v</code></pre>
         <span class="chevron">▶</span>
       </div>
       <div class="endpoint-body">
-        <p>Toggles the keep-awake flag (also exposed in the UI). While enabled, idle auto-shutdown never triggers. Resets the current strike count.</p>
+        <p>Pauses or resumes idle auto-shutdown (also exposed in the UI). While the pause is active, idle auto-shutdown never triggers. Resets the current strike count.</p>
+        <p>The pause is <strong>bounded</strong>: it self-expires after <code>ttl_minutes</code> (default <code>KEEP_AWAKE_DEFAULT_MINUTES</code> = 120, clamped to <code>KEEP_AWAKE_MAX_MINUTES</code> = 240), so a stray toggle can never latch the PC on indefinitely.</p>
         <h4>Request body</h4>
-        <pre><code>{ "enabled": true }</code></pre>
+        <pre><code>{ "enabled": true, "ttl_minutes": 120 }</code></pre>
         <h4>Response</h4>
-        <pre><code>{ "keep_awake": true }</code></pre>
+        <pre><code>{ "keep_awake": true, "keep_awake_remaining_seconds": 7200 }</code></pre>
       </div>
     </div>
   </section>

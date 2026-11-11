@@ -120,7 +120,10 @@ function updateIdleUI(idle) {
 
   if (checkbox.checked !== idle.keep_awake) checkbox.checked = idle.keep_awake;
   if (idle.keep_awake) {
-    statusEl.textContent = '💡 Idle shutdown paused (keep awake).';
+    const rem = idle.keep_awake_remaining_seconds;
+    statusEl.textContent = rem != null
+      ? `💡 Idle shutdown paused — resumes in ~${Math.ceil(rem / 60)} min.`
+      : '💡 Idle shutdown paused (keep awake).';
   } else if (idle.llm_idle_seconds != null) {
     const remaining = Math.max(0, idle.shutdown_after_minutes * 60 - idle.llm_idle_seconds);
     statusEl.textContent = `🌙 Auto-shutdown in ~${Math.ceil(remaining / 60)} min if PC and chat stay idle.`;

@@ -47,7 +47,7 @@ def _decide(**overrides) -> tuple[bool, str]:
     kwargs = dict(
         now=NOW,
         state_value="ready",
-        keep_awake=False,
+        keep_awake_until=None,
         active_streams=0,
         ready_since=NOW - 7200,          # ready for 2h
         last_llm_activity=NOW - 3600,    # last chat 1h ago
@@ -65,13 +65,26 @@ def test_happy_path_idle():
     assert is_idle, reason
 
 
+def test_unexpired_keep_awake_blocks():
+    """A keep-awake deadline in the future pauses shutdown."""
+    is_idle, reason = _decide(keep_awake_until=NOW + 600)
+    assert not is_idle
+    assert reason == "keep-awake is on"
+
+
+def test_expired_keep_awake_does_not_block():
+    """Once the keep-awake deadline has passed it is treated as off (bug-053)."""
+    is_idle, reason = _decide(keep_awake_until=NOW - 1)
+    assert is_idle, reason
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
         {"cfg": _cfg(idle_shutdown_enabled=False)},
         {"state_value": "offline"},
         {"state_value": "ollama_starting"},
-        {"keep_awake": True},
+        {"keep_awake_until": NOW + 3600},                     # keep-awake unexpired
         {"active_streams": 1},
         {"last_llm_activity": NOW - 60},                      # fresh chat
         {"ready_since": NOW - 60, "last_llm_activity": None}, # just became ready
@@ -178,3 +191,55 @@ async def test_idle_tick_triggers_shutdown_once():
     finally:
         for k, v in originals.items():
             setattr(settings, k, v)
+
+
+# ── Keep-awake endpoint ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_keep_awake_endpoint_uses_default_ttl(client):
+    """Enabling without a duration arms a bounded, default-length pause."""
+    from app.config import settings
+    from app.state import broker_state
+
+    broker_state.keep_awake_until = None
+    resp = await client.post("/api/idle/keep_awake", json={"enabled": True})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["keep_awake"] is True
+    remaining = data["keep_awake_remaining_seconds"]
+    assert remaining is not None
+    # ~default minutes, allowing a little slack for clock drift during the call.
+    assert settings.keep_awake_default_minutes * 60 - 5 < remaining <= settings.keep_awake_default_minutes * 60
+    broker_state.keep_awake_until = None
+
+
+@pytest.mark.asyncio
+async def test_keep_awake_endpoint_caps_unbounded_request(client):
+    """A huge ttl_minutes is clamped to the hard cap — no indefinite latch (bug-053)."""
+    from app.config import settings
+    from app.state import broker_state
+
+    broker_state.keep_awake_until = None
+    resp = await client.post(
+        "/api/idle/keep_awake", json={"enabled": True, "ttl_minutes": 999_999}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["keep_awake"] is True
+    assert data["keep_awake_remaining_seconds"] <= settings.keep_awake_max_minutes * 60
+    broker_state.keep_awake_until = None
+
+
+@pytest.mark.asyncio
+async def test_keep_awake_endpoint_disable_clears(client):
+    """Disabling clears the pause entirely."""
+    from app.state import broker_state
+
+    broker_state.set_keep_awake(True)
+    resp = await client.post("/api/idle/keep_awake", json={"enabled": False})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["keep_awake"] is False
+    assert data["keep_awake_remaining_seconds"] is None
+    assert broker_state.keep_awake_until is None
